@@ -1,0 +1,15 @@
+{
+  "bundle_json": "{\"schema\":\"recall-weight-bundle-v1\",\"netuid\":353,\"epoch_start_block\":7929994,\"score_version\":\"5\",\"metagraph_block\":7929994,\"created_at\":1787153905,\"master_validator_hotkey\":\"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY\",\"weights\":[{\"uid\":2,\"hotkey\":\"5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty\",\"weight\":0.4},{\"uid\":1,\"hotkey\":\"5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mm1kiL8Yd2\",\"weight\":0.25},{\"uid\":3,\"hotkey\":\"5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy\",\"weight\":0.35}],\"evidence_summary_hash\":\"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\",\"corpus_identity\":\"abcd1234@corpus-v1\",\"bundle_sha256\":\"25e6c0ddab83c1f6be14124e7ceb5a91206bee1d19a7ffee05240378392e6ad6\",\"signature\":\"b2a19b5a4feb355aa92dda401c8f4763311d52e4e954a76f29f39ab44fa2db14adc0bb2992429c3198fabf844501511d34a69a3176c06ce74578a5baf4446f85\"}",
+  "bundle_sha256": "25e6c0ddab83c1f6be14124e7ceb5a91206bee1d19a7ffee05240378392e6ad6",
+  "canonical_hex": "726563616c6c2d7765696768742d62756e646c652d7631003335330037393239393934003500373932393939340031373837313533393035003547727776614546357a58623236467a397263517044575335374374455248704e6568584350634e6f48474b75745159000000000335464c53696743394847524b566842394669456f3459336b6f50734e6d426d4c4a62705867326d6d316b694c38596432003100000000000000d03f3546486e655734367847586773356d5569766555347362547947427a6d73745573705a43393255686a4a4d36393474790032009a9999999999d93f354441416e726a375648547a6e6e32415742656d4d757942775a577336464e466a64795658556559756d335054584679003300666666666666d63f003966383664303831383834633764363539613266656161306335356164303135613362663466316232623062383232636431356436633135623066303061303800616263643132333440636f727075732d7631",
+  "epoch_start_block": "7929994",
+  "master_hotkey": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+  "netuid": "353",
+  "note": "Test-only deterministic fixture (dev URI //Alice; master_validator_hotkey == signer). Signed by the Go weightbundle package for the Phase C C3 python verifier.",
+  "prehash_rule": "blake2b-256 if canonical \u003e 256 bytes; else raw",
+  "schema": "recall-weight-bundle-v1",
+  "score_version": "5",
+  "signature_hex": "b2a19b5a4feb355aa92dda401c8f4763311d52e4e954a76f29f39ab44fa2db14adc0bb2992429c3198fabf844501511d34a69a3176c06ce74578a5baf4446f85",
+  "signer_public_hex": "d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d",
+  "signer_ss58": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
+}

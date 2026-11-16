@@ -1,0 +1,37 @@
+# Minimum and recommended compute for a Recall validator (Bittensor subnet 31).
+# See SETUP.md ("Requirements") for the full list, including network access and the
+# chain prerequisites. The validator needs no GPU and runs no inbound server.
+
+version: '1.0'
+
+compute_spec:
+
+  validator:
+
+    cpu:
+      min_cores: 2                # Minimum number of CPU cores
+      recommended_cores: 4        # Recommended number of CPU cores (Recall's tested recommendation)
+      architecture: "x86_64"      # Tested architecture. uv.lock also carries manylinux aarch64
+                                  # wheels for every native dependency, but CI runs on x86_64 only.
+
+    gpu:
+      required: False             # No GPU is used
+
+    memory:
+      min_ram: 4                  # Minimum RAM (GB)
+      recommended_ram: 8          # Recommended RAM (GB)
+
+    storage:
+      min_space: 20               # Minimum free disk (GB): checkout, uv-managed Python, locked
+                                  # packages or Docker images/builds, OS footprint, state and logs
+
+    os:
+      name: "Ubuntu"              # Or a similar 64-bit glibc Linux with systemd
+      version: 22.04              # Minimum version
+
+network_spec:
+  bandwidth:
+    download: 10                  # Modest estimate (Mbps), not a measured minimum: RPC reads
+                                  # plus one bundle of at most 1 MiB per tempo
+    upload: 5                     # Modest estimate (Mbps), not a measured minimum: outbound
+                                  # only; the validator runs no inbound server

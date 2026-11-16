@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (python 3.12, uv frozen)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: "3.12"
+          version: "0.10.10"
+          enable-cache: true
+
+      - name: Verify runtime dependency export
+        # Select Python 3.12 without installing this project or its dependencies.
+        run: uv run --no-project --python 3.12 python scripts/check_runtime_lock.py
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Byte-compile every module
+        run: uv run --frozen python -m compileall -q .
+
+      - name: Run the test suite
+        # Includes tests/test_operator_examples.py: the shipped templates must load as
+        # the mainnet production profile and carry none of the removed settings.
+        timeout-minutes: 10
+        run: uv run --frozen pytest -q -p no:cacheprovider

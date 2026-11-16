@@ -1,0 +1,221 @@
+{
+ "description": "Production master (v3 weights, readiness shares, no-burn, split 0.40) golden output; generated from recall-validator 910044e by tests/test_v3_production_golden.py",
+ "source_commit": "910044e",
+ "configuration": {
+  "readiness_mode": "shares",
+  "burn_unearned": false,
+  "readiness_split": 0.4
+ },
+ "epochs": {
+  "3600": {
+   "payload": {
+    "anchor_block": 3600,
+    "anchor_hash": "0x0000000000000000000000000000000000000000000000000000000000005e10",
+    "epoch_start_block": 3600,
+    "evidence_window_seconds": 21600,
+    "genesis_hash": "0xabababababababababababababababababababababababababababababababab",
+    "hotkeys": [
+     "5EyASRiwHZ12Gf7MTDW9uXudZit6pmnkaGBe6zKEciCa5fUf",
+     "5HYGqTcMWYuUMb3RuqTSBspJqaGVwCxLmbCP9yb4FAN4FiCU",
+     "5GWugfa899GY4hP9i51uMYopM4nxoVyFe3rcf5qo3d36SAuX"
+    ],
+    "master_hotkey": "5DUwUdRtunk1VLjCdGGpk2KjeDvocJpueUFtaxUsf6kybuLH",
+    "netuid": 31,
+    "schema": "recall-allocation-bundle-v2",
+    "score_kind": "readiness_service_v3",
+    "score_version": "11",
+    "selection_block": 3612,
+    "snapshot_digest": "0x8c19954f57f6c06ed175d85c7e094ddd43d2c298ccdc11c1e215244f7dc16e07",
+    "subnet_epoch_index": 10,
+    "uids": [
+     3,
+     4,
+     5
+    ],
+    "weights_u16": [
+     65535,
+     64860,
+     64837
+    ]
+   },
+   "payload_sha256": "faeaa89fe4006b10ae49a96f2e0a04e8d6435e7233d3a84b910723b75087e6a3",
+   "slave_applied": [
+    [
+     3,
+     65535
+    ],
+    [
+     4,
+     64860
+    ],
+    [
+     5,
+     64837
+    ]
+   ],
+   "v3_state_files_sha256": {
+    "v3/weights/epochs/3600.json": "f4accec2c43e29418657f6740f7fd4836b2824e3fce28d922147b10b23c908c1",
+    "v3/weights/state.json": "5750fde0036bfaf0ce0d0d6cc108c2472a11a55f805a3870e9f97dceb7d88eae"
+   }
+  },
+  "3960": {
+   "payload": {
+    "anchor_block": 3960,
+    "anchor_hash": "0x0000000000000000000000000000000000000000000000000000000000005f78",
+    "epoch_start_block": 3960,
+    "evidence_window_seconds": 21600,
+    "genesis_hash": "0xabababababababababababababababababababababababababababababababab",
+    "hotkeys": [
+     "5EyASRiwHZ12Gf7MTDW9uXudZit6pmnkaGBe6zKEciCa5fUf",
+     "5HYGqTcMWYuUMb3RuqTSBspJqaGVwCxLmbCP9yb4FAN4FiCU",
+     "5GWugfa899GY4hP9i51uMYopM4nxoVyFe3rcf5qo3d36SAuX"
+    ],
+    "master_hotkey": "5DUwUdRtunk1VLjCdGGpk2KjeDvocJpueUFtaxUsf6kybuLH",
+    "netuid": 31,
+    "schema": "recall-allocation-bundle-v2",
+    "score_kind": "readiness_service_v3",
+    "score_version": "11",
+    "selection_block": 3972,
+    "snapshot_digest": "0x8c19954f57f6c06ed175d85c7e094ddd43d2c298ccdc11c1e215244f7dc16e07",
+    "subnet_epoch_index": 11,
+    "uids": [
+     3,
+     4,
+     5
+    ],
+    "weights_u16": [
+     65535,
+     64549,
+     64206
+    ]
+   },
+   "payload_sha256": "0a62663c03ebb07300a4e78e8b3954ee11747839a32818fe8a5ee4d6128338ee",
+   "slave_applied": [
+    [
+     3,
+     65535
+    ],
+    [
+     4,
+     64549
+    ],
+    [
+     5,
+     64206
+    ]
+   ],
+   "v3_state_files_sha256": {
+    "v3/weights/epochs/3600.json": "f4accec2c43e29418657f6740f7fd4836b2824e3fce28d922147b10b23c908c1",
+    "v3/weights/epochs/3960.json": "637f77ad0ceba1509a0bff75edeee0edadebaf350ba3510714f8bea4682458f2",
+    "v3/weights/state.json": "73a4b16646055cdd86d6f4009d4cb5e7b256d1edf00842dc73601fd49d95eec3"
+   }
+  },
+  "4320": {
+   "payload": {
+    "anchor_block": 4320,
+    "anchor_hash": "0x00000000000000000000000000000000000000000000000000000000000060e0",
+    "epoch_start_block": 4320,
+    "evidence_window_seconds": 21600,
+    "genesis_hash": "0xabababababababababababababababababababababababababababababababab",
+    "hotkeys": [
+     "5EyASRiwHZ12Gf7MTDW9uXudZit6pmnkaGBe6zKEciCa5fUf",
+     "5HYGqTcMWYuUMb3RuqTSBspJqaGVwCxLmbCP9yb4FAN4FiCU",
+     "5GWugfa899GY4hP9i51uMYopM4nxoVyFe3rcf5qo3d36SAuX"
+    ],
+    "master_hotkey": "5DUwUdRtunk1VLjCdGGpk2KjeDvocJpueUFtaxUsf6kybuLH",
+    "netuid": 31,
+    "schema": "recall-allocation-bundle-v2",
+    "score_kind": "readiness_service_v3",
+    "score_version": "11",
+    "selection_block": 4332,
+    "snapshot_digest": "0x8c19954f57f6c06ed175d85c7e094ddd43d2c298ccdc11c1e215244f7dc16e07",
+    "subnet_epoch_index": 12,
+    "uids": [
+     3,
+     4,
+     5
+    ],
+    "weights_u16": [
+     65535,
+     64267,
+     63633
+    ]
+   },
+   "payload_sha256": "04e34d8ad6cf51c2852f4c9b79549a37c613b02674dbb3c5120204f0892e0a92",
+   "slave_applied": [
+    [
+     3,
+     65535
+    ],
+    [
+     4,
+     64267
+    ],
+    [
+     5,
+     63633
+    ]
+   ],
+   "v3_state_files_sha256": {
+    "v3/weights/epochs/3600.json": "f4accec2c43e29418657f6740f7fd4836b2824e3fce28d922147b10b23c908c1",
+    "v3/weights/epochs/3960.json": "637f77ad0ceba1509a0bff75edeee0edadebaf350ba3510714f8bea4682458f2",
+    "v3/weights/epochs/4320.json": "96abcf667a1bead62d3efefc3059016bf854277219f5794d1d665a940ca71e6f",
+    "v3/weights/state.json": "bfbaa2f07505090a543a4d183634e9aaf9502c65fe193b5bf712989ee514961b"
+   }
+  },
+  "4680": {
+   "payload": {
+    "anchor_block": 4680,
+    "anchor_hash": "0x0000000000000000000000000000000000000000000000000000000000006248",
+    "epoch_start_block": 4680,
+    "evidence_window_seconds": 21600,
+    "genesis_hash": "0xabababababababababababababababababababababababababababababababab",
+    "hotkeys": [
+     "5EyASRiwHZ12Gf7MTDW9uXudZit6pmnkaGBe6zKEciCa5fUf",
+     "5HYGqTcMWYuUMb3RuqTSBspJqaGVwCxLmbCP9yb4FAN4FiCU",
+     "5GWugfa899GY4hP9i51uMYopM4nxoVyFe3rcf5qo3d36SAuX"
+    ],
+    "master_hotkey": "5DUwUdRtunk1VLjCdGGpk2KjeDvocJpueUFtaxUsf6kybuLH",
+    "netuid": 31,
+    "schema": "recall-allocation-bundle-v2",
+    "score_kind": "readiness_service_v3",
+    "score_version": "11",
+    "selection_block": 4692,
+    "snapshot_digest": "0x8c19954f57f6c06ed175d85c7e094ddd43d2c298ccdc11c1e215244f7dc16e07",
+    "subnet_epoch_index": 13,
+    "uids": [
+     3,
+     4,
+     5
+    ],
+    "weights_u16": [
+     65535,
+     64011,
+     63113
+    ]
+   },
+   "payload_sha256": "5cdc6056f17627283806b8ee1fffe7ac080a753e4f27108af26a594d8a29ed2d",
+   "slave_applied": [
+    [
+     3,
+     65535
+    ],
+    [
+     4,
+     64011
+    ],
+    [
+     5,
+     63113
+    ]
+   ],
+   "v3_state_files_sha256": {
+    "v3/weights/epochs/3600.json": "f4accec2c43e29418657f6740f7fd4836b2824e3fce28d922147b10b23c908c1",
+    "v3/weights/epochs/3960.json": "637f77ad0ceba1509a0bff75edeee0edadebaf350ba3510714f8bea4682458f2",
+    "v3/weights/epochs/4320.json": "96abcf667a1bead62d3efefc3059016bf854277219f5794d1d665a940ca71e6f",
+    "v3/weights/epochs/4680.json": "e3c497c3efccc6236c181d459ebe8a44bb17f466397109c597789ec51dff6d67",
+    "v3/weights/state.json": "248c0892bfef59c3fdb959b43dbdf97dd20476168313f0a35cd037c586899828"
+   }
+  }
+ }
+}

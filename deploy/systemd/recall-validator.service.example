@@ -1,0 +1,46 @@
+# Recall validator systemd unit TEMPLATE. See SETUP.md (secondary) or docs/MASTER.md.
+# Render it by replacing every @PLACEHOLDER@ with an absolute value for your host:
+#   @ROLE@          secondary | master (description only; the role is BUNDLE_ROLE)
+#   @SERVICE_USER@  dedicated non-login service account that owns the wallet and state
+#   @SERVICE_GROUP@ that account's primary group
+#   @INSTALL_DIR@   checkout containing main.py and the uv-synced .venv
+#   @ENV_FILE@      protected environment file (also linked as @INSTALL_DIR@/.env)
+#   @STATE_DIR@     persistent BUNDLE_STATE_DIR, the only path the service writes
+# Installing the rendered unit does not start it. Start only at the activation step.
+[Unit]
+Description=Recall validator (@ROLE@)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@INSTALL_DIR@
+# main.py reads @INSTALL_DIR@/.env; some settings (for example
+# INCENTIVE_V3_SLOT_WINDOW_HOURS) are also read from the process environment,
+# so the service loads the same file explicitly.
+EnvironmentFile=@ENV_FILE@
+# bittensor 10.5.0 creates ~/.bittensor/{wallets,miners} at import unless
+# READ_ONLY=1; the home directory is read-only for this service.
+Environment=READ_ONLY=1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@INSTALL_DIR@/.venv/bin/python @INSTALL_DIR@/main.py
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=120
+KillSignal=SIGINT
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@STATE_DIR@
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

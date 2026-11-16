@@ -1,0 +1,9 @@
+Raw HTTP response body of recall-web POST /api/validator/v3/metrics (real gin handler
+ValidatorV3Metrics, isolated PostgreSQL 16 fixture), produced by
+  RECALL_TEST_PG_DSN=... V3_HANDLER_OUT=<this file> go test ./internal/handlers -run TestV3PG_HandlerOutputForValidator
+against the corresponding Recall API source fixture generator.
+Config: SEMANTIC_SCORING_ENABLED, QUALITY_ROTATING_CORPUS, QUALITY_ROTATING_SOURCE=go-stdlib,
+QUALITY_ROTATING_ALLOW_UNREVIEWED (testnet override). netuid 9999 is a placeholder (offline only).
+Miners: hk-a healthy vdb/emb/rerank, hk-b vdb integrity ~75 %, hk-c smoke-only quality rows
+(dropped by provenance) + isolation breach, hk-d no evidence. 40 free organic retrievals on hk-a.
+Bytes are verbatim; do not edit (regenerate with the command above).

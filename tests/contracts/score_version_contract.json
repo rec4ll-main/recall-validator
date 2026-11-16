@@ -1,0 +1,28 @@
+{
+  "description": "Cross-repository score_version contract. Bumping either side without the other must fail CI.",
+  "supported_score_version": "11",
+  "recall_web": {
+    "release_sha": "362b8d11754919887cf032c80d647fb9dccbe4ff",
+    "source_path": "api/internal/handlers/validator_v3_params.go",
+    "constant_line": "v3ScoreVersion         = \"11\"",
+    "html_url": "https://github.com/rec4ll-main/recall-web/blob/362b8d11754919887cf032c80d647fb9dccbe4ff/api/internal/handlers/validator_v3_params.go",
+    "probe_evidence_tag": {
+      "source_path": "api/internal/handlers/validator.go",
+      "constant_name": "scoreVersion",
+      "value": "10",
+      "role": "Generation tag recall-web stamps on probe_evidence rows and filters POST /validator/v3/metrics by. It is not a validator score version: the validator never sees it, and changing it would empty the v3 evidence windows."
+    }
+  },
+  "recall_validator": {
+    "module": "score_version.py",
+    "constant_name": "SUPPORTED_SCORE_VERSION",
+    "fixture": "tests/fixtures/recall_v3_metrics_from_web_handler.json"
+  },
+  "notes": [
+    "Incentive v3 (score_version 11) is the only scoring path; the validator no longer calls POST /validator/tier-scores (score_version 10).",
+    "Historical journal recovery of v5/v7/v8/v9/v10 INTENT/PENDING/UNKNOWN envelopes remains allowed via parse_bundle_for_journal_recovery.",
+    "Historical recovery is NOT permission to ingest unsupported *new* versions.",
+    "Pinned to recall-web commit 362b8d11754919887cf032c80d647fb9dccbe4ff for the v3ScoreVersion 11 constant. The constant excerpt omits upstream operational comments.",
+    "When recall-web bumps v3ScoreVersion, update this contract (release_sha + constant_line) in the same window that bumps SUPPORTED_SCORE_VERSION."
+  ]
+}

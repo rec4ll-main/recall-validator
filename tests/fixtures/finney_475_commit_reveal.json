@@ -1,0 +1,318 @@
+{
+  "source": "Read-only Finney spec475 captures, 2026-10-11; no transaction sent by this test",
+  "finalized_block": 9261370,
+  "finalized_anchor": "0x6f7c4e8bad3434c75e5438adc84dc9dacb4138b8440997d33d34440fab478cf5",
+  "commit": {
+    "hotkey": "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+    "before": {
+      "block_hash": "0x6b21f87552338f35c373ee7a445393e94572fd9c579d0df2e52ea2a661187c99",
+      "uid": 48,
+      "last_update": 9261102,
+      "weights": [
+        [
+          0,
+          65535
+        ]
+      ],
+      "matching_pending": [
+        {
+          "hotkey": "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+          "commit_block": 9261102,
+          "reveal_round": 32978835,
+          "ciphertext_sha256": "fe43566185d2bcaa69ef0c8956542b6f4cb896cf964333d69be426601c0a7638"
+        }
+      ]
+    },
+    "after": {
+      "block_hash": "0xb390c010b46c6e22e62ab364c033e26ea831c8627726aa0ba81ac0493da9f9fb",
+      "uid": 48,
+      "last_update": 9261285,
+      "weights": [
+        [
+          0,
+          65535
+        ]
+      ],
+      "matching_pending": [
+        {
+          "hotkey": "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+          "commit_block": 9261102,
+          "reveal_round": 32978835,
+          "ciphertext_sha256": "fe43566185d2bcaa69ef0c8956542b6f4cb896cf964333d69be426601c0a7638"
+        },
+        {
+          "hotkey": "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+          "commit_block": 9261285,
+          "reveal_round": 32978835,
+          "ciphertext_sha256": "7546766917a0dd66cd69a0c6676845100d979b9d8fc34d36e5b22c2623436fd9"
+        }
+      ]
+    },
+    "events": [
+      {
+        "phase": "ApplyExtrinsic",
+        "extrinsic_idx": 12,
+        "event": {
+          "event_index": "076c",
+          "module_id": "SubtensorModule",
+          "event_id": "TimelockedWeightsCommitted",
+          "attributes": [
+            "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+            31,
+            "0x41d0821c9772f0580d3050131b1a9f8ad11258a0914e8f9a148873cf205cc4e7",
+            32978835
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "TimelockedWeightsCommitted",
+        "attributes": [
+          "5HbScNssaEfioJHXjcXdpyqo1AKnYjymidGF8opcF9rTFZdT",
+          31,
+          "0x41d0821c9772f0580d3050131b1a9f8ad11258a0914e8f9a148873cf205cc4e7",
+          32978835
+        ],
+        "topics": []
+      },
+      {
+        "phase": "ApplyExtrinsic",
+        "extrinsic_idx": 23,
+        "event": {
+          "event_index": "076c",
+          "module_id": "SubtensorModule",
+          "event_id": "TimelockedWeightsCommitted",
+          "attributes": [
+            "5FYoNXtiaRDUKmLtHq7h6aANuFzM1jESG8ViNtpvDqKaMdtR",
+            31,
+            "0x2591210b1792470f1fdf595617c3e18c68094b7eaff9131fb160882d7b2b2efc",
+            32978838
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "TimelockedWeightsCommitted",
+        "attributes": [
+          "5FYoNXtiaRDUKmLtHq7h6aANuFzM1jESG8ViNtpvDqKaMdtR",
+          31,
+          "0x2591210b1792470f1fdf595617c3e18c68094b7eaff9131fb160882d7b2b2efc",
+          32978838
+        ],
+        "topics": []
+      }
+    ]
+  },
+  "reveal": {
+    "block": 9261076,
+    "block_hash": "0x29bf9a20e6006147f566a4e765983282d37d0e3d96c6987f13009e1ec1f18156",
+    "events": [
+      {
+        "phase": "Initialization",
+        "extrinsic_idx": null,
+        "event": {
+          "event_index": "0705",
+          "module_id": "SubtensorModule",
+          "event_id": "WeightsSet",
+          "attributes": [
+            31,
+            10
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "WeightsSet",
+        "attributes": [
+          31,
+          10
+        ],
+        "topics": []
+      },
+      {
+        "phase": "Initialization",
+        "extrinsic_idx": null,
+        "event": {
+          "event_index": "076d",
+          "module_id": "SubtensorModule",
+          "event_id": "TimelockedWeightsRevealed",
+          "attributes": [
+            31,
+            "5ES7vyzgeN91DoGsoQJLEGwT8WfUArF5bkqhHSbmFyKwGZSG"
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "TimelockedWeightsRevealed",
+        "attributes": [
+          31,
+          "5ES7vyzgeN91DoGsoQJLEGwT8WfUArF5bkqhHSbmFyKwGZSG"
+        ],
+        "topics": []
+      },
+      {
+        "phase": "Initialization",
+        "extrinsic_idx": null,
+        "event": {
+          "event_index": "0705",
+          "module_id": "SubtensorModule",
+          "event_id": "WeightsSet",
+          "attributes": [
+            31,
+            9
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "WeightsSet",
+        "attributes": [
+          31,
+          9
+        ],
+        "topics": []
+      },
+      {
+        "phase": "Initialization",
+        "extrinsic_idx": null,
+        "event": {
+          "event_index": "076d",
+          "module_id": "SubtensorModule",
+          "event_id": "TimelockedWeightsRevealed",
+          "attributes": [
+            31,
+            "5CsvRJXuR955WojnGMdok1hbhffZyB4N5ocrv82f3p5A2zVp"
+          ]
+        },
+        "event_index": 7,
+        "module_id": "SubtensorModule",
+        "event_id": "TimelockedWeightsRevealed",
+        "attributes": [
+          31,
+          "5CsvRJXuR955WojnGMdok1hbhffZyB4N5ocrv82f3p5A2zVp"
+        ],
+        "topics": []
+      }
+    ],
+    "before_last_update": {
+      "9": 9261054,
+      "10": 9260859
+    },
+    "after_last_update": {
+      "9": 9261054,
+      "10": 9260859
+    }
+  },
+  "metadata_events": {
+    "WeightsSet": {
+      "name": "WeightsSet",
+      "fields": [
+        {
+          "name": null,
+          "type": 44,
+          "typeName": "NetUidStorageIndex",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 42,
+          "typeName": "u16",
+          "docs": []
+        }
+      ],
+      "index": 5,
+      "docs": [
+        "a caller successfully sets their weights on a subnetwork."
+      ]
+    },
+    "TimelockedWeightsCommitted": {
+      "name": "TimelockedWeightsCommitted",
+      "fields": [
+        {
+          "name": null,
+          "type": 0,
+          "typeName": "T::AccountId",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 44,
+          "typeName": "NetUidStorageIndex",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 14,
+          "typeName": "H256",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 7,
+          "typeName": "u64",
+          "docs": []
+        }
+      ],
+      "index": 108,
+      "docs": [
+        "Timelocked weights have been successfully committed.",
+        "",
+        "* **who**: The account ID of the user committing the weights.",
+        "* **netuid**: The network identifier.",
+        "* **commit_hash**: The hash representing the committed weights.",
+        "* **reveal_round**: The round at which weights can be revealed."
+      ]
+    },
+    "TimelockedWeightsRevealed": {
+      "name": "TimelockedWeightsRevealed",
+      "fields": [
+        {
+          "name": null,
+          "type": 44,
+          "typeName": "NetUidStorageIndex",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 0,
+          "typeName": "T::AccountId",
+          "docs": []
+        }
+      ],
+      "index": 109,
+      "docs": [
+        "Timelocked Weights have been successfully revealed.",
+        "",
+        "* **netuid**: The network identifier.",
+        "* **who**: The account ID of the user revealing the weights."
+      ]
+    },
+    "WeightsRevealed": {
+      "name": "WeightsRevealed",
+      "fields": [
+        {
+          "name": null,
+          "type": 0,
+          "typeName": "T::AccountId",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 44,
+          "typeName": "NetUidStorageIndex",
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": 14,
+          "typeName": "H256",
+          "docs": []
+        }
+      ],
+      "index": 87,
+      "docs": [
+        "Weights have been successfully revealed.",
+        "",
+        "* **who**: The account ID of the user revealing the weights.",
+        "* **netuid**: The network identifier.",
+        "* **commit_hash**: The hash of the revealed weights."
+      ]
+    }
+  }
+}

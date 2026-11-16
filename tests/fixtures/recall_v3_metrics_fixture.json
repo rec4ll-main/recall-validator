@@ -1,0 +1,141 @@
+{
+ "body": {
+  "demand": {
+   "emb": 0.0,
+   "gen": 0.0,
+   "rerank": 0.0,
+   "vdb_query": 120.0,
+   "vdb_storage": 0.0
+  },
+  "epoch_start_block": 0,
+  "half_life_seconds": 10800,
+  "miners": [
+   {
+    "hotkey": "M0",
+    "serious_failure": false,
+    "tiers": {
+     "emb": {
+      "checks": [
+       {
+        "n_eff": 8.0,
+        "name": "emb_quality",
+        "p_hat": 0.9
+       }
+      ],
+      "factor": 1.0,
+      "h_n": 576,
+      "h_passes": 518
+     },
+     "vdb": {
+      "checks": [
+       {
+        "n_eff": 187.0,
+        "name": "vdb_integrity",
+        "p_hat": 0.99
+       },
+       {
+        "n_eff": 187.0,
+        "name": "vdb_retention",
+        "p_hat": 0.99
+       }
+      ],
+      "credited": {
+       "vdb_query": 60.0
+      },
+      "factor": 1.0,
+      "h_n": 576,
+      "h_passes": 570
+     }
+    },
+    "uid": 3
+   },
+   {
+    "hotkey": "M1",
+    "serious_failure": false,
+    "tiers": {
+     "vdb": {
+      "checks": [
+       {
+        "n_eff": 187.0,
+        "name": "vdb_integrity",
+        "p_hat": 0.985
+       },
+       {
+        "n_eff": 187.0,
+        "name": "vdb_retention",
+        "p_hat": 0.985
+       }
+      ],
+      "credited": {
+       "vdb_query": 40.0
+      },
+      "factor": 1.0,
+      "h_n": 576,
+      "h_passes": 567
+     }
+    },
+    "uid": 4
+   },
+   {
+    "hotkey": "M2",
+    "serious_failure": false,
+    "tiers": {
+     "vdb": {
+      "checks": [
+       {
+        "n_eff": 187.0,
+        "name": "vdb_integrity",
+        "p_hat": 0.99
+       },
+       {
+        "n_eff": 187.0,
+        "name": "vdb_retention",
+        "p_hat": 0.99
+       }
+      ],
+      "credited": {
+       "vdb_query": 20.0
+      },
+      "factor": 1.0,
+      "h_n": 576,
+      "h_passes": 570
+     }
+    },
+    "uid": 5
+   },
+   {
+    "hotkey": "M3",
+    "serious_failure": true,
+    "tiers": {
+     "vdb": {
+      "checks": [
+       {
+        "n_eff": 187.0,
+        "name": "vdb_integrity",
+        "p_hat": 0.99
+       },
+       {
+        "n_eff": 187.0,
+        "name": "vdb_retention",
+        "p_hat": 0.99
+       }
+      ],
+      "factor": 1.0,
+      "h_n": 576,
+      "h_passes": 570
+     }
+    },
+    "uid": 6
+   }
+  ],
+  "netuid": 0,
+  "schema": "recall-v3-metrics-v1",
+  "score_kind": "readiness_service_v3",
+  "score_version": "11",
+  "slot_window_seconds": 172800,
+  "storage_rewards_enabled": false,
+  "t_call": "2026-10-08T04:12:00.123456Z",
+  "window_seconds": 21600
+ },
+ "description": "recall-web POST /api/validator/v3/metrics fixture (score_version 11, numeric-only). Shared contract between recall-web and recall-validator; hotkeys are placeholders replaced by tests."
+}

@@ -1,0 +1,40 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Validator runtime state
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local development, secrets, and generated outputs
+.venv/
+.env.*
+!.env.example
+bundle_state/
+logs/
+*.log
+.coverage
+htmlcov/
+build/
+dist/
+
+# Local notes, scratch and patches are never committed
+notes/
+scratch/
+patches/
+tmp/
+*.local.*
+*.patch
+*.orig

@@ -1,0 +1,34 @@
+# Local credentials and runtime state must never enter the image context.
+.env
+.env.*
+!.env.example
+**/.bittensor/
+wallets/
+bundle_state/
+**/*.sqlite3
+**/*.sqlite3-wal
+**/*.sqlite3-shm
+
+# Source-control metadata, development tools, and generated output.
+.git/
+.github/
+.agents/
+.codex/
+.venv/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+.coverage
+htmlcov/
+logs/
+*.log
+build/
+dist/
+
+# Keep tests and operator-only material in source, out of the runtime image.
+tests/
+docs/
+config/
+deploy/
+SETUP.md
