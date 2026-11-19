@@ -268,6 +268,17 @@ def weights_with_burn_remainder(resolved, burn_uid):
 
 
 
+def _record_bundle_health(kind: str, state_dir: str, epoch: int, outcome) -> None:
+    """Per-epoch bundle health (bundle_health.py); never breaks the tick."""
+    try:
+        import bundle_health
+
+        record = bundle_health.record_consume if kind == "consume" else bundle_health.record_publish
+        record(state_dir, int(epoch), str(outcome.status), str(outcome.reason or ""))
+    except Exception:  # noqa: BLE001 - status only
+        logger.warning("bundle health record failed", exc_info=True)
+
+
 def run_bundle_epoch(subtensor, wallet, metagraph, env: EnvironmentVariables) -> bool:
     """Run one chain-v2 tick. The role is explicit (never inferred from a URL).
 
@@ -307,6 +318,7 @@ def run_bundle_epoch(subtensor, wallet, metagraph, env: EnvironmentVariables) ->
             master_reconcile_pointer(subtensor, cfg, wallet.hotkey.ss58_address)
         outcome = slave_consume(subtensor, metagraph, wallet, cfg)
         logger.info("bundle consume: status=%s reason=%s", outcome.status, outcome.reason)
+        _record_bundle_health("consume", cfg.state_dir, schedule.epoch_start_block, outcome)
         return outcome.status in ("applied", "pending", "verified")
     if env.bundle_role == "master":
         outcome = master_publish(subtensor, metagraph, wallet, cfg)
@@ -314,6 +326,7 @@ def run_bundle_epoch(subtensor, wallet, metagraph, env: EnvironmentVariables) ->
             "bundle master publish: status=%s cid=%s reason=%s",
             outcome.status, outcome.cid, outcome.reason,
         )
+        _record_bundle_health("publish", cfg.state_dir, schedule.epoch_start_block, outcome)
         return outcome.status in ("published", "pending")
     return False
 

@@ -92,6 +92,12 @@ def write_loop_status(state_dir: str, loop, results, miner_burned) -> str:
         "miner_burned_error": miner_burned.get("error"),
         "miner_burned_stale": bool(miner_burned.get("stale")),
     }
+    try:
+        import bundle_health
+
+        doc["bundle_health"] = bundle_health.summary(state_dir)
+    except Exception:  # noqa: BLE001 - status only
+        doc["bundle_health"] = None
     os.makedirs(state_dir, exist_ok=True)
     tmp = f"{path}.{os.getpid()}.tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
@@ -99,6 +105,7 @@ def write_loop_status(state_dir: str, loop, results, miner_burned) -> str:
         fh.write("\n")
     os.replace(tmp, path)
     stale = doc["loop"]["stale_mechs"]
-    logger.info("weight loop status: stale_mechs=%s alerts=%s miner_burned=%s stale_read=%s",
-                stale, doc["loop"]["alert_counts"], doc["miner_burned"], doc["miner_burned_stale"])
+    missed = (doc.get("bundle_health") or {}).get("consecutive_missed") or 0
+    logger.info("weight loop status: stale_mechs=%s alerts=%s miner_burned=%s stale_read=%s missed_epochs=%s",
+                stale, doc["loop"]["alert_counts"], doc["miner_burned"], doc["miner_burned_stale"], missed)
     return path

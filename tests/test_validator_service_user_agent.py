@@ -9,7 +9,7 @@ import pytest
 
 from chain_v2_fake import MASTER, FakeWallet
 from main import publish_metagraph_sync
-from v3_metrics_client import fetch_v3_metrics
+from v3_metrics_client import DEFAULT_TIMEOUT_SECONDS as V3_TIMEOUT, fetch_v3_metrics
 
 API_ORIGIN = "https://rec4ll.com/api"
 FIXTURE_KEY = "fixture-api-key"
@@ -54,7 +54,7 @@ def test_scoring_requests_identify_service_and_preserve_auth_body_timeout(timeou
         seen.append(request)
         return Response(json.dumps(response).encode())
 
-    expected_timeout = 10 if timeout is None else timeout
+    expected_timeout = V3_TIMEOUT if timeout is None else timeout
     options = {} if timeout is None else {"timeout": timeout}
     result = fetch(API_ORIGIN, FIXTURE_KEY, cohort, response["netuid"],
                    response["epoch_start_block"], urlopen=transport, **options)

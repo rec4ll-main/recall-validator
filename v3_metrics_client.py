@@ -40,7 +40,10 @@ from v3_params import (
 )
 
 MAX_RESPONSE_BYTES = 1 << 20
-DEFAULT_TIMEOUT_SECONDS = 10
+# The evidence query grows with miners and evidence; at ~180 miners it took ~10 s and a 10 s
+# limit made epochs miss their publish window. 60 s still leaves room for one retry inside
+# the 12-block (~144 s) publish window.
+DEFAULT_TIMEOUT_SECONDS = 60
 
 
 class V3MetricsError(ApiFetchError):

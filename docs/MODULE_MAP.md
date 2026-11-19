@@ -61,6 +61,7 @@ score-version-11 allocations.
 | `bundle_ipfs.py` | Publish raw IPFS blocks and fetch them from content gateways. |
 | `bundle_publish.py`, `bundle_commit_guard.py` | Persist and publish a bundle, verify its availability, then submit its chain pointer. |
 | `bundle_consume.py` | Read the chain pointer, fetch the bundle and verify it for the weight loop. |
+| `bundle_health.py` | Per epoch, record whether the bundle was published and consumed; log `ALERT bundle_missed` and count missed epochs in `bundle_health.json`. |
 | `bundle_store.py`, `bundle_runtime.py` | Store immutable artifacts and coordinate chain and journal operations. |
 
 `weight_bundle.py` contains the earlier `recall-weight-bundle-v1` verifier. It is

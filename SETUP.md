@@ -128,7 +128,7 @@ Warnings and alerts (`ERROR | ALERT weight_loop <code>: <detail>`):
 pm2 logs recall-validator --lines 2000 --nostream | grep -E '\| (WARNING|ERROR) \|' | tail -n 20
 ```
 
-The validator also rewrites `bundle_state/weight_loop_status.json` after every tick: `written_at` should be recent, and `loop.alert_counts` shows the alerts since the last start. Point your monitoring at that file or at the log.
+The validator also rewrites `bundle_state/weight_loop_status.json` after every tick: `written_at` should be recent, and `loop.alert_counts` shows the alerts since the last start. Point your monitoring at that file or at the log. `bundle_health.consecutive_missed` above 0 means the latest epoch had no weight bundle to consume (the log says `ALERT bundle_missed`); your validator keeps setting the last valid weights until a new bundle arrives.
 
 ## Stop
 
