@@ -235,11 +235,74 @@ def test_tempo_increase_accepts_newer_block_with_lower_sequence():
 
 
 
-def test_bundle_with_changed_hotkey_is_rejected():
+def test_changed_hotkey_uid_is_dropped_and_its_share_redistributed():
+    chain = FakeChain()
+    chain.keys[2] = "5SomeoneElse"
+    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
+    loop, sub, alerts = make(chain, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    r = loop.tick()[0]
+    assert r.status == "confirmed"
+    assert sub.calls[0]["uids"] == [1] and sub.calls[0]["weights"] == [1.0]
+    assert loop._mech[0].replaced_uids == [2]
+    assert "bundle_failclosed" not in alerts
+
+
+def test_changed_hotkey_redistribution_is_pro_rata():
+    chain = FakeChain()
+    chain.keys[3] = "5Miner3"
+    chain.keys[4] = "5NewOwnerOf4"
+    vec = lambda c: WeightVector(uids=(1, 2, 3, 4), weights_u16=(30000, 20000, 10000, 40000),
+                                 hotkeys=("5Miner1", "5Miner2", "5Miner3", "5OldMiner4"),
+                                 as_of_block=c.head - c.head % c.tempo, bundle_seq=1)
+    loop, sub, _ = make(chain, vec=vec)
+    assert loop.tick()[0].status == "confirmed"
+    call = sub.calls[0]
+    assert call["uids"] == [1, 2, 3]
+    assert call["weights"] == pytest.approx([0.5, 1 / 3, 1 / 6])
+
+
+def test_changed_hotkey_on_stale_bundle_still_sets_remaining_miners():
+    chain = FakeChain()
+    chain.keys[1] = "5SomeoneElse"
+    loop, sub, alerts = make(chain, vec=lambda c: vector(c.head - c.head % c.tempo - 2 * c.tempo))
+    r = loop.tick()[0]
+    assert r.status == "stale_last_valid"
+    assert sub.calls[0]["uids"] == [2] and sub.calls[0]["weights"] == [1.0]
+
+
+def test_replaced_uids_reset_once_hotkeys_match_again():
     chain = FakeChain()
     chain.keys[2] = "5SomeoneElse"
     loop, sub, _ = make(chain)
-    assert loop.tick()[0].status == "failclosed" and not sub.calls
+    loop.tick()
+    assert loop._mech[0].replaced_uids == [2]
+    chain.keys[2] = "5Miner2"
+    chain.head += chain.rate_limit + 1
+    assert loop.tick()[0].status == "confirmed"
+    assert loop._mech[0].replaced_uids == []
+    assert sub.calls[-1]["uids"] == [1, 2]
+
+
+def test_all_weighted_uids_changed_hotkey_burns_to_owner():
+    chain = FakeChain()
+    chain.keys[1] = "5SomeoneElse"
+    chain.keys[2] = "5AnotherOne"
+    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
+    loop, sub, alerts = make(chain, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    r = loop.tick()[0]
+    assert r.status == "failclosed_burn"
+    assert sub.calls[0]["uids"] == [0]
+    assert "bundle_failclosed" in alerts
+
+
+def test_only_zero_weight_uids_left_burns_to_owner():
+    chain = FakeChain()
+    chain.keys[1] = "5SomeoneElse"
+    vec = lambda c: WeightVector(uids=(1, 2), weights_u16=(65535, 0), hotkeys=("5Miner1", "5Miner2"),
+                                 as_of_block=c.head - c.head % c.tempo, bundle_seq=1)
+    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
+    loop, sub, _ = make(chain, vec=vec, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    assert loop.tick()[0].status == "failclosed_burn"
 
 
 def test_slave_fail_closed_keep_never_uniform():

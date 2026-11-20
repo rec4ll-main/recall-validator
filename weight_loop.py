@@ -33,8 +33,10 @@ Rules (subtensor spec 477):
 * Weights never stop because pointer publish or bundle consume failed (the
   commitment stall: Commitments space frozen with SubnetEpochIndex). No fresh
   verified bundle -> alert ``bundle_failclosed`` and keep SETTING weights from the
-  last valid verified bundle (uids re-checked against live chain hotkeys). No valid
-  bundle at all -> burn 100% to the proven owner/immune UID. Never uniform.
+  last valid verified bundle (uids re-checked against live chain hotkeys). A UID whose
+  hotkey changed since the bundle is dropped and its share goes pro rata to the miners
+  that still match; never burn while a valid miner has weight. No valid bundle at all
+  -> burn 100% to the proven owner/immune UID. Never uniform.
 """
 
 from __future__ import annotations
@@ -107,6 +109,18 @@ class WeightVector:
     score_version: int | None = None
 
 
+def without_uids(vec: WeightVector, drop) -> WeightVector:
+    """``vec`` without the given UIDs (weights are normalized at submit time)."""
+    drop = set(drop)
+    keep = [i for i, u in enumerate(vec.uids) if u not in drop]
+    return WeightVector(
+        uids=tuple(vec.uids[i] for i in keep),
+        weights_u16=tuple(vec.weights_u16[i] for i in keep),
+        hotkeys=tuple(vec.hotkeys[i] for i in keep),
+        as_of_block=vec.as_of_block, bundle_seq=vec.bundle_seq, score_version=vec.score_version,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SubmitResult:
     success: bool
@@ -170,6 +184,7 @@ class _MechState:
     last_status: str = ""  # outcome of the last tick for this mechanism
     last_reason: str = ""
     bundle_age_blocks: int = -1  # head - as_of_block of the vector last selected, -1 unknown
+    replaced_uids: list[int] = field(default_factory=list)  # dropped from the last selected vector
 
 
 @dataclass
@@ -234,6 +249,7 @@ class WeightLoop:
         over-age bundle is invalid.
         """
         vec = self.weights_source()
+        st.replaced_uids = []
         if vec is None:
             return None, "", "no verified bundle"
         age = p.head - vec.as_of_block
@@ -241,8 +257,15 @@ class WeightLoop:
         if age < 0:
             return None, "", f"bundle as_of_block {vec.as_of_block} is ahead of head {p.head}"
         bad = self._invalid_uids(vec, reader)
+        st.replaced_uids = bad
         if bad:
-            return None, "", f"bundle uids no longer match chain hotkeys: {bad}"
+            # A UID re-registered since the bundle was built: never pay its new owner the
+            # old miner's score, and never burn the rest for it. Drop those UIDs; the
+            # caller normalizes, so their share goes pro rata to the miners that still
+            # match. Only when no valid miner weight is left is the vector invalid.
+            vec = without_uids(vec, bad)
+            if sum(vec.weights_u16) <= 0:
+                return None, "", f"bundle uids no longer match chain hotkeys: {bad}; no valid miner weight left"
         if self.max_stale_blocks > 0 and age > self.max_stale_blocks:
             return None, "", f"stale bundle beyond max age: age {age} > max_stale_blocks {self.max_stale_blocks}"
         if age > p.tempo + self.bundle_grace_blocks:
@@ -336,6 +359,11 @@ class WeightLoop:
         except Exception as exc:
             return LoopResult(mechid, "error", f"vector identity read failed: {exc}")
         status = "submitted"
+        if vec is not None and st.replaced_uids:
+            logger.warning(
+                "weight loop: mech=%d uids %s changed hotkey since bundle seq %d; their weight is "
+                "redistributed pro rata to the %d miners that still match",
+                mechid, st.replaced_uids, vec.bundle_seq, sum(1 for w in vec.weights_u16 if w > 0))
         if vec is not None and stale:
             current_as_of, _ = block_clock_slot(p.head, p.tempo)
             ready_at = current_as_of + PUBLICATION_CUTOFF_BLOCKS + CURRENT_SLOT_CONSUME_ALLOWANCE_BLOCKS
