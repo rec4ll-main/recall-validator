@@ -1,7 +1,7 @@
 """Slave (and master post-D) consume orchestration: fetch -> verify -> set weights.
 
 Consumes the pinned bundle once D is finalized, verifies bindings and signature,
-reconstructs the exact SDK encoding, checks every row (including the burn row) against
+reconstructs the exact SDK encoding, checks every row (no row may pay the subnet owner) against
 the native max-weight cap and the SDK send preconditions, and sets weights with
 ``max_attempts=1`` through the ``bundle_dispatch`` adapter. An attempt that never
 reached the submit RPC is NOT_DISPATCHED and an attempt finalized with
@@ -73,9 +73,9 @@ from bundle_v2 import (
     parse_bundle_for_journal_recovery,
     verify_bundle,
 )
-from owner_burn import OwnerReadError
+from owner_uid import OwnerReadError
 from score_version import UnsupportedScoreVersion
-from bundle_weights import signed_burn_uid, validate_weight_rows
+from bundle_weights import owner_row, validate_weight_rows
 
 
 def slave_consume(subtensor, metagraph, wallet, cfg: BundleConfig) -> ConsumeOutcome:
@@ -159,23 +159,17 @@ def slave_consume(subtensor, metagraph, wallet, cfg: BundleConfig) -> ConsumeOut
         except BundleCodecError as exc:
             return _rejected(cfg, cid, schedule, f"bundle parse failed: {exc}")
 
-        # Resolve the owner before any row check. A failed owner read proves nothing
-        # about the burn row, so it blocks without rejecting: a later poll retries.
+        # Recall never weights the subnet owner. A failed owner read proves nothing, so it
+        # blocks without rejecting: a later poll retries.
         try:
-            burn_uid, burn_hotkey = _signed_burn_uid(subtensor, metagraph, cfg, bundle.payload)
+            paid_owner = owner_row(subtensor, metagraph, cfg.netuid, bundle.payload, strict=True)
         except OwnerReadError:
             return ConsumeOutcome("blocked", reason="owner read failed; retrying")
+        if paid_owner is not None:
+            return _rejected(cfg, cid, schedule, f"payload weights the subnet owner (uid {paid_owner})")
         winners = {uid: hotkey for uid, hotkey, _, _ in snapshot.cohort}
         for uid, hotkey in zip(bundle.payload.uids, bundle.payload.hotkeys):
             if uid in winners and winners[uid] == hotkey:
-                continue
-            # Allow the signed owner/immune burn row (v3 units not paid to a miner).
-            if (
-                burn_uid is not None
-                and uid == burn_uid
-                and burn_hotkey is not None
-                and hotkey == burn_hotkey
-            ):
                 continue
             return _rejected(cfg, cid, schedule, "payload uid is not a chain-dedup winner")
 
@@ -198,11 +192,8 @@ def slave_consume(subtensor, metagraph, wallet, cfg: BundleConfig) -> ConsumeOut
 
         p = bundle.payload
         # Same validation the master runs before publishing (bundle_weights): native
-        # max-weight cap on every row (burn row included, exact chain arithmetic),
-        # miner cap on non-burn rows, and SDK encode equality.
-        refused = validate_weight_rows(
-            p.uids, p.weights_u16, native_cap=snapshot.native_cap, burn_uid=burn_uid,
-        )
+        # max-weight cap (exact chain arithmetic), miner cap and SDK encode equality.
+        refused = validate_weight_rows(p.uids, p.weights_u16, native_cap=snapshot.native_cap)
         if refused is not None:
             return _rejected(cfg, cid, schedule, refused)
         total = sum(p.weights_u16)
@@ -470,7 +461,6 @@ def _later_applied_proof(subtensor, wallet_hotkey, cfg, store, schedule, head):
     return later_cid, schedule.subnet_epoch_index
 
 
-
 def _payload_from_persisted_envelope(envelope: bytes, rec):
     """Return the payload for weights reconcile, or None when bytes are not journal-bound.
 
@@ -620,9 +610,3 @@ def _reconcile_weights_op(
     return _settle_unresolved(journal, rec, head, "weights not provable applied/pending")
 
 
-def _signed_burn_uid(subtensor, metagraph, cfg, payload):
-    """Owner/immune burn UID present in the signed payload (see bundle_weights).
-
-    Strict: raises ``OwnerReadError`` when the owner chain reads fail.
-    """
-    return signed_burn_uid(subtensor, metagraph, cfg.netuid, payload, strict=True)

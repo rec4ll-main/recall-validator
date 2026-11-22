@@ -78,7 +78,7 @@ MINERS = [keypair(f"Miner{i}") for i in range(4)]
 MINER_COLDS = [keypair(f"MinerCold{i}") for i in range(4)]
 VALIDATOR_COLDS = [keypair("MasterCold"), keypair("SlaveCold")]
 
-# uid 0 = subnet owner (burn row), 1 = master, 2 = slave, 3..6 = miners.
+# uid 0 = subnet owner (never weighted), 1 = master, 2 = slave, 3..6 = miners.
 HOTKEYS = [OWNER.ss58_address, MASTER.ss58_address, SLAVE.ss58_address] + [
     k.ss58_address for k in MINERS
 ]
@@ -633,16 +633,17 @@ def config(state_dir, *, ipfs_api_url="", gateway_urls=(), role="slave") -> Bund
 
 
 def build_envelope_for(chain: FakeChain, subtensor, epoch_start: int, *, weights=None,
-                       with_burn: bool = False, signer: Keypair = MASTER, **overrides) -> bytes:
-    """Sign a valid bundle for the epoch at ``epoch_start`` (uses the real snapshot)."""
+                       with_owner_row: bool = False, signer: Keypair = MASTER, **overrides) -> bytes:
+    """Sign a valid bundle for the epoch at ``epoch_start`` (uses the real snapshot).
+    ``with_owner_row`` adds a row for the subnet owner, which every check must refuse."""
     from allocation_snapshot import build_snapshot, snapshot_digest
 
     snap = build_snapshot(subtensor, FakeMetagraph(), NETUID, None, GENESIS, block=epoch_start)
     from allocation_encoding import convert_weights_and_uids
 
-    uids = ([0] if with_burn else []) + list(MINER_UIDS)
+    uids = ([0] if with_owner_row else []) + list(MINER_UIDS)
     if weights is None:
-        shares = ([0.8] + [0.05] * len(MINER_UIDS)) if with_burn else [0.25] * len(MINER_UIDS)
+        shares = ([0.8] + [0.05] * len(MINER_UIDS)) if with_owner_row else [0.25] * len(MINER_UIDS)
         _, weights = convert_weights_and_uids(list(uids), shares)
     payload = {
         "schema": "recall-allocation-bundle-v2",

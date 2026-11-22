@@ -31,7 +31,8 @@ settings, commands or file locations should keep these guides consistent.
 | `validator_signer_guard.py`, `setter_guard.py` | Check the registered signer and validator permit; prevent two local processes from using one state directory. |
 | `bundle_schedule.py`, `bundle_chain.py` | Read finalized chain state, determine the publication window and decode commitment pointers. |
 | `allocation_snapshot.py`, `allocation_types.py`, `metagraph_arrays.py` | Build and validate a consistent UID, hotkey and coldkey snapshot. |
-| `owner_burn.py` | Resolve the subnet owner UID from chain state for fallback allocations. |
+| `owner_uid.py` | Resolve the subnet owner UID from chain state; bundle checks refuse any row that pays it. |
+| `equal_split.py` | Miner list for the equal split that replaces burning (owner hotkey and active validators excluded). |
 
 ## Scoring and allocation
 
@@ -42,7 +43,7 @@ Only the master calculates allocations. Secondaries verify its signed result.
 | `v3_metrics_client.py` | Fetch and validate evidence from `POST /api/validator/v3/metrics`. |
 | `v3_acceptance.py`, `v3_slots.py` | Decide tier eligibility and advance readiness stages and slot holders. |
 | `v3_demand.py` | Calculate the demand ramp for each service pool. |
-| `allocation_v3.py` | Allocate readiness and service units, apply caps, and account for burned or redistributed units. |
+| `allocation_v3.py` | Allocate readiness and service units, apply caps, redistribute unearned units and split any remainder equally (never burns). |
 | `allocation.py`, `allocation_encoding.py` | Normalize weights, encode them with the installed SDK, and check the decoded result. |
 | `v3_runtime.py`, `v3_state.py` | Build an epoch allocation and persist its state and records. |
 | `v3_eligibility.py` | Select the allocator's state scope and bind it to stored artifacts. Submission journals remain shared across scopes. |

@@ -137,137 +137,6 @@ def publish_metagraph_sync(
         return False
 
 
-def resolve_burn_uid(subtensor, metagraph, netuid: int) -> int | None:
-    """Return the UID of the subnet owner's registered hotkey, or None.
-
-    Miner incentive directed to the subnet-owner/immune hotkey UID is
-    withheld and burned/recycled under current Subtensor RecycleOrBurn
-    semantics. That burn path is only valid when the target UID is the actual
-    owner/immune hotkey; an arbitrary UID 0 receives ordinary miner incentive
-    and is not a burn target. When the owner/immune hotkey UID cannot be
-    proven, return None so the caller skips the fallback instead of weighting
-    an arbitrary UID.
-    """
-    try:
-        info = subtensor.get_subnet_info(netuid)
-    except Exception:
-        logger.warning("Unable to load subnet info for owner UID resolution; skipping burn fallback")
-        return None
-
-    hotkeys = list(getattr(metagraph, "hotkeys", None) or [])
-    coldkeys = getattr(metagraph, "coldkeys", None)
-    owner_coldkey = getattr(info, "owner_ss58", None)
-    owner_hotkey = getattr(info, "owner_hotkey", None)
-
-    if owner_hotkey:
-        for uid, hotkey in enumerate(hotkeys):
-            if hotkey == owner_hotkey:
-                return uid
-
-    if owner_coldkey and coldkeys is not None:
-        for uid, coldkey in enumerate(coldkeys):
-            if uid < len(hotkeys) and coldkey == owner_coldkey:
-                return uid
-
-    if owner_coldkey:
-        for uid, hotkey in enumerate(hotkeys):
-            if hotkey == owner_coldkey:
-                return uid
-
-    logger.warning("Owner/immune hotkey UID could not be resolved; skipping burn fallback")
-    return None
-
-
-def dedup_recommended_uids(resolved, coldkeys, reg_blocks):
-    """Collapse multiple hotkeys per coldkey to one survivor.
-
-    Groups (uid, weight) pairs by coldkey and keeps only the UID whose
-    hotkey registered at the highest block; registration-block ties break
-    deterministically by lowest UID. Returns the surviving pairs so weights
-    retain their raw weights (burn remainder is applied by weights_with_burn_remainder).
-    """
-    if not resolved or not coldkeys or not reg_blocks:
-        return resolved
-    survivors_by_coldkey = {}
-    for uid, weight in resolved:
-        if uid >= len(coldkeys) or uid >= len(reg_blocks):
-            continue
-        coldkey = coldkeys[uid]
-        reg_block = reg_blocks[uid]
-        current = survivors_by_coldkey.get(coldkey)
-        if current is None:
-            survivors_by_coldkey[coldkey] = (uid, weight, reg_block)
-            continue
-        current_uid, _, current_block = current
-        if reg_block > current_block or (reg_block == current_block and uid < current_uid):
-            survivors_by_coldkey[coldkey] = (uid, weight, reg_block)
-    deduped = [(uid, weight) for uid, weight, _ in survivors_by_coldkey.values()]
-    logger.info(
-        "Incentive dedup: %d UIDs kept (one per coldkey) from %d candidates",
-        len(deduped),
-        len(resolved),
-    )
-    return deduped
-
-
-def _metagraph_registration_blocks(metagraph):
-    """Return (coldkeys, block_at_registration) when the metagraph exposes
-    them, else (None, None). The registration block is exposed by bittensor
-    10.5.0 as metagraph.block_at_registration (list aligned to hotkeys)."""
-    coldkeys = getattr(metagraph, "coldkeys", None)
-    reg_blocks = getattr(metagraph, "block_at_registration", None)
-    if coldkeys is None or reg_blocks is None:
-        return None, None
-    return coldkeys, reg_blocks
-
-
-def renormalize_resolved(resolved):
-    """Scale (uid, weight) pairs so weights sum to 1.0. Empty or all-zero
-    input is returned unchanged (the caller's burn safety net handles it)."""
-    total = sum(weight for _, weight in resolved)
-    if total <= 0 or not resolved:
-        return resolved
-    return [(uid, weight / total) for uid, weight in resolved]
-
-
-
-def weights_with_burn_remainder(resolved, burn_uid):
-    """Keep surviving raw weights; send 1.0-sum(survivors) to burn_uid.
-
-    Used after coldkey dedupe (and whenever the API allocation is intentionally
-    under-full). Does NOT renormalize survivors to 1.0 when a burn UID is
-    available. If burn_uid is None and the sum is in (0, 1), falls back to
-    renormalizing survivors so the chain still receives a unit sum.
-    Returns (uids, weights) lists ready for subtensor.set_weights.
-
-    After appending the burn UID, normalize to ascending unique UIDs so the
-    legacy path cannot emit a trailing burn UID (e.g. 0 after higher survivors).
-    """
-    from allocation import normalize_uid_weight_pairs
-
-    if not resolved:
-        if burn_uid is None:
-            return [], []
-        return [burn_uid], [1.0]
-    uids = [uid for uid, _ in resolved]
-    total_raw = sum(weight for _, weight in resolved)
-    if total_raw <= 0:
-        if burn_uid is None:
-            return uids, [0.0 for _ in uids]
-        return [burn_uid], [1.0]
-    if total_raw < 1.0:
-        weights = [weight for _, weight in resolved]
-        if burn_uid is not None and burn_uid not in uids:
-            uids = uids + [burn_uid]
-            weights = weights + [1.0 - total_raw]
-            uids, weights, _ = normalize_uid_weight_pairs(uids, weights)
-            return list(uids), list(weights)
-        # No burn placement: fail-soft renormalize so remainder is not dropped.
-        return uids, [weight / total_raw for _, weight in resolved]
-    return uids, [weight / total_raw for _, weight in resolved]
-
-
-
 def _record_bundle_health(kind: str, state_dir: str, epoch: int, outcome) -> None:
     """Per-epoch bundle health (bundle_health.py); never breaks the tick."""
     try:
@@ -304,7 +173,6 @@ def run_bundle_epoch(subtensor, wallet, metagraph, env: EnvironmentVariables) ->
         weight_loop_enabled=bool(env.weight_loop_enabled),
         v3_eligibility_scope=getattr(env, "incentive_v3_eligibility_scope", ""),
         v3_readiness_split=float(getattr(env, "incentive_v3_readiness_split", 0.40)),
-        v3_burn_unearned=bool(getattr(env, "incentive_v3_burn_unearned", True)),
         v3_readiness_mode=str(getattr(env, "incentive_v3_readiness_mode", "shares")),
     )
     try:
@@ -363,7 +231,7 @@ def build_weight_loop(subtensor, wallet, metagraph, env: EnvironmentVariables):
     from weight_loop import (
         SubstrateReader,
         WeightLoop,
-        owner_burn_vector,
+        equal_split_vector,
         sdk_submitter,
         weight_vector_from_store,
     )
@@ -379,8 +247,8 @@ def build_weight_loop(subtensor, wallet, metagraph, env: EnvironmentVariables):
         margin=int(env.weight_due_margin_blocks),
         bundle_grace_blocks=int(env.weight_bundle_grace_blocks),
         max_stale_blocks=int(getattr(env, "weight_max_stale_blocks", 0)),
-        failclosed_policy=str(env.weight_failclosed_policy).strip().lower(),
-        burn_vector=lambda: owner_burn_vector(subtensor, metagraph, env.netuid),
+        fallback_vector=lambda: equal_split_vector(subtensor, env.netuid,
+                                                   exclude_hotkeys=(wallet.hotkey.ss58_address,)),
     )
 
 

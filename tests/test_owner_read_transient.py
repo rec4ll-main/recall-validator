@@ -1,8 +1,8 @@
 """A failed owner read blocks a secondary's consume for retry; it never rejects.
 
-``resolve_owner_burn_uid`` used to fold a transient SubnetOwnerHotkey/Uids/Keys read
-failure into "no owner", which hid the signed burn row, failed the row checks and
-closed a valid publication for good (#36 made verification failures final). Real
+Consume proves the subnet owner before the row checks (a bundle that weights the owner
+is refused). A transient SubnetOwnerHotkey/Uids/Keys read failure must not be folded
+into "no owner" or into a rejection: #36 made verification failures final. Real
 ``slave_consume`` against the chain/SDK fixture; only the substrate read is flaky.
 """
 
@@ -21,7 +21,7 @@ OWNER_READ_FAILED = "owner read failed; retrying"
 
 def _world(tmp_path, monkeypatch, *, native_cap=0.9, **env_kw):
     w = World(tmp_path, monkeypatch, native_cap=native_cap)
-    w.epoch(E1, with_burn=True, **env_kw)
+    w.epoch(E1, **env_kw)
     w.chain.advance_to(E1 + 20)
     w.rejected = []
     real_mark = bundle_consume.mark_rejected
@@ -94,9 +94,9 @@ def test_persistent_owner_read_failure_stays_blocked_never_rejected(tmp_path, mo
 
 def test_non_winner_row_with_successful_owner_read_is_rejected_for_good(tmp_path, monkeypatch):
     a, b = MINER_UIDS[0], MINER_UIDS[1]
-    uids = [0] + list(MINER_UIDS)
+    uids = list(MINER_UIDS)
     hotkeys = [HOTKEYS[u] for u in uids]
-    hotkeys[1], hotkeys[2] = HOTKEYS[b], HOTKEYS[a]
+    hotkeys[0], hotkeys[1] = HOTKEYS[b], HOTKEYS[a]
     w = _world(tmp_path, monkeypatch, hotkeys=hotkeys)
 
     out = w.tick()
@@ -109,8 +109,18 @@ def test_non_winner_row_with_successful_owner_read_is_rejected_for_good(tmp_path
     assert w.sub.set_weights_calls == 0
 
 
+def test_owner_row_with_successful_owner_read_is_rejected_for_good(tmp_path, monkeypatch):
+    w = _world(tmp_path, monkeypatch, with_owner_row=True)
+    out = w.tick()
+    assert (out.status, out.reason) == ("blocked", "payload weights the subnet owner (uid 0)")
+    assert len(w.rejected) == 1 and _publication_states(w) == ["rejected"]
+    assert w.sub.set_weights_calls == 0
+
+
 def test_over_cap_after_recovered_owner_read_is_rejected_for_good(tmp_path, monkeypatch):
-    w = _world(tmp_path, monkeypatch, native_cap=0.5)
+    from allocation_encoding import convert_weights_and_uids
+    over = convert_weights_and_uids(list(MINER_UIDS), [0.7, 0.1, 0.1, 0.1])[1]
+    w = _world(tmp_path, monkeypatch, native_cap=0.5, weights=over)
     _flaky_owner_read(w, monkeypatch, fails=1)
 
     out = w.tick()
@@ -120,7 +130,7 @@ def test_over_cap_after_recovered_owner_read_is_rejected_for_good(tmp_path, monk
     w.chain.advance(10)
     out = w.tick()
     assert out.status == "blocked"
-    assert out.reason.startswith("burn row uid 0 share 0.79"), out
+    assert out.reason.startswith("row uid 3 share 0.7"), out
     assert len(w.rejected) == 1 and _publication_states(w) == ["rejected"]
 
     w.chain.advance(30)

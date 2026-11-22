@@ -9,7 +9,7 @@ A fresh finalized snapshot is compared (identity + native cap, ignoring anchor h
 to the trusted E snapshot before dispatch so churn is detected, not missed. Before the
 envelope is persisted or published, its rows go through the same
 ``bundle_weights.validate_weight_rows`` check consume runs (native max-weight cap on
-every row, burn row included); a bundle consume would refuse is never published.
+every row; never the subnet owner); a bundle consume would refuse is never published.
 
 ``set_commitment`` runs through the ``bundle_dispatch`` adapter: an attempt that never
 reached the submit RPC is NOT_DISPATCHED (re-armable inside the window) and one
@@ -67,7 +67,7 @@ from bundle_schedule import (
 )
 from bundle_store import ArtifactStore, ArtifactStoreError, artifact_digest
 from bundle_v2 import BundleCodecError, parse_bundle
-from bundle_weights import signed_burn_uid, validate_weight_rows
+from bundle_weights import owner_row, validate_weight_rows
 from v3_eligibility import EligibilityScopeError, validate_eligibility_artifact
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def _master_publish(subtensor, metagraph, wallet, cfg: BundleConfig, *, fetch=No
                 return PublishOutcome("blocked", reason="no scored cohort or allocator not ready")
             envelope = built
         # Refuse a bundle consume would refuse (native max-weight cap on every row,
-        # burn row included; miner cap; SDK encode equality) before it is persisted,
+        # no owner row; miner cap; SDK encode equality) before it is persisted,
         # pinned or pointed to. Applies to a rebuilt and to a previously stored envelope.
         refused = _validate_envelope_rows(subtensor, metagraph, cfg, schedule, envelope)
         if refused is not None:
@@ -276,10 +276,14 @@ def _validate_envelope_rows(subtensor, metagraph, cfg: BundleConfig, schedule, e
         payload = parse_bundle(envelope).payload
     except (AllocationSnapshotError, BundleCodecError) as exc:
         return str(exc)
-    burn_uid, _ = signed_burn_uid(subtensor, metagraph, cfg.netuid, payload)
-    return validate_weight_rows(
-        payload.uids, payload.weights_u16, native_cap=snapshot.native_cap, burn_uid=burn_uid,
-    )
+    from owner_uid import OwnerReadError
+    try:
+        paid_owner = owner_row(subtensor, metagraph, cfg.netuid, payload, strict=True)
+    except OwnerReadError:
+        return "owner read failed; retrying"
+    if paid_owner is not None:
+        return f"payload weights the subnet owner (uid {paid_owner})"
+    return validate_weight_rows(payload.uids, payload.weights_u16, native_cap=snapshot.native_cap)
 
 
 def _stamp_deadline_after_call(subtensor, journal, key, intent_block) -> None:

@@ -2,7 +2,7 @@
 
 This is the only scoring and weights path. Every epoch the master fetches v3 evidence,
 advances the persisted allocator state, writes the epoch record (inputs digest, t_call,
-units, burn, encoded vector) and signs a score_version 11 envelope from it. Startup
+units, unearned and redistributed units, encoded vector) and signs a score_version 11 envelope from it. Startup
 (main.enforce_v3_startup_guards) requires actual genesis, signer/permit and
 process-lock checks first.
 
@@ -37,8 +37,7 @@ V3_STATE_MODE = "weights"
 _POLICY_FIELD = "generation_benchmark_policy_sha256"
 
 
-def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
-                     resolve_burn=None):
+def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None):
     """Return (record, snapshot, digest). Persists state + record once per epoch."""
     mode = V3_STATE_MODE
     signer = wallet.hotkey
@@ -67,11 +66,19 @@ def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
     ev = fetch_fn(cfg.api_url, cfg.internal_api_key, cohort, cfg.netuid,
                   schedule.epoch_start_block, allow_plaintext=cfg.allow_plaintext)
     miners = to_miner_evidence(ev, cohort_full)
-    if resolve_burn is None:
-        from owner_burn import resolve_owner_burn_uid as resolve_burn
-    burn_uid, burn_hotkey = resolve_burn(subtensor, metagraph, cfg.netuid)
-    if burn_uid is None or not burn_hotkey:
-        raise RuntimeError("owner/burn UID unresolved; v3 fails closed")
+    # Recall never burns: every row is a miner. What no earning miner can take (everything
+    # when nobody earned) is split equally across all miners from the epoch snapshot.
+    from equal_split import snapshot_miners
+    from owner_uid import resolve_owner_uid
+    # The owner is proven strictly at a finalized head: a failed read raises here, before
+    # any record or state is written, and the epoch retries. Excluded by UID and hotkey.
+    owner_uid, owner_hk = resolve_owner_uid(subtensor, metagraph, cfg.netuid, strict=True)
+    # Restricted to the snapshot cohort (one chain-dedup winner per coldkey): bundle
+    # consumers accept rows for cohort winners only.
+    cohort_uids = {uid for uid, _, _, _ in snapshot.cohort}
+    fallback_miners = {uid: hk for uid, hk in snapshot_miners(snapshot.hotkeys, metagraph, owner_hk,
+                                                             exclude_hotkeys=(signer.ss58_address,))
+                       if uid in cohort_uids and uid != owner_uid}
     if state and state.get("last_epoch") is not None and int(state["last_epoch"]) >= schedule.epoch_start_block:
         # state already advanced past this epoch but its record is missing: never recompute
         # (that would double-advance stages/ramps); fail closed for this epoch.
@@ -79,10 +86,10 @@ def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
     readiness_mode = str(getattr(cfg, "v3_readiness_mode", READINESS_MODE_DEFAULT))
     result = allocate_v3(miners, ev.demand, state, schedule.epoch_start_block,
                          readiness_split=float(getattr(cfg, "v3_readiness_split", 0.40)),
-                         burn_unearned=bool(getattr(cfg, "v3_burn_unearned", True)),
-                         readiness_mode=readiness_mode)
+                         readiness_mode=readiness_mode,
+                         fallback_miners=fallback_miners)
     result.state[_POLICY_FIELD] = ""
-    uids, hotkeys, weights_u16 = encode_v3(result, burn_uid, burn_hotkey)
+    uids, hotkeys, weights_u16 = encode_v3(result)
     inputs = {
         "t_call": ev.t_call,
         "demand": ev.demand,
@@ -107,12 +114,9 @@ def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
         "inputs_digest": digest(inputs),
         "inputs": inputs,
         "units_by_uid": {str(u): v for u, v in sorted(result.units_by_uid.items())},
-        "burn_uid": burn_uid,
-        "burn_units": result.burn_units,
-        "burn_by_reason": result.burn_by_reason,
+        "unearned_by_reason": result.unearned_by_reason,
         "redistributed_by_reason": result.redistributed_by_reason,
         "readiness_split": float(getattr(cfg, "v3_readiness_split", 0.40)),
-        "burn_unearned": bool(getattr(cfg, "v3_burn_unearned", True)),
         "f": result.f,
         "holders": result.holders,
         "events": result.events,
@@ -125,6 +129,9 @@ def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
     # the digest covers fetched evidence only). Records written before this setting
     # existed carry no readiness_mode and were computed with slots.
     record["readiness_mode"] = readiness_mode
+    if result.equal_split_units > 0:
+        # Units no earning miner could take (all, when nobody earned), split equally.
+        record["equal_split_units"] = result.equal_split_units
     if readiness_mode == "shares":
         record["readiness_payees"] = result.readiness_payees
     # Record first (exclusive create), then state: a crash between the two leaves the
@@ -134,12 +141,12 @@ def compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None,
     return record, snapshot, snap_digest
 
 
-def build_envelope_v3(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None, resolve_burn=None):
+def build_envelope_v3(subtensor, metagraph, wallet, cfg, schedule, *, fetch=None):
     """Sign the score_version 11 envelope for this epoch's v3 allocation."""
     from bundle_v2 import sign_bundle
 
     record, snapshot, snap_digest = compute_v3_epoch(subtensor, metagraph, wallet, cfg, schedule,
-                                                     fetch=fetch, resolve_burn=resolve_burn)
+                                                     fetch=fetch)
     payload = {
         "schema": "recall-allocation-bundle-v2",
         "genesis_hash": cfg.genesis_hash,

@@ -10,7 +10,7 @@ import pytest
 from bundle_schedule import FinalizedHead, read_schedule
 from bundle_store import latest_verified, mark_verified
 from weight_loop import (
-    FAILCLOSED_BURN,
+    FAILCLOSED_EQUAL_SPLIT,
     LiveParams,
     SubmitResult,
     WeightLoop,
@@ -21,6 +21,15 @@ from weight_loop import (
 NETUID = 353
 HK = "5HotkeyMaster"
 MINERS = {1: "5Miner1", 2: "5Miner2", 0: "5Owner"}
+# The no-bundle fallback: equal weight for every miner (never the owner UID 0).
+EQUAL_SPLIT = WeightVector(uids=(1, 2), weights_u16=(1, 1), hotkeys=("5Miner1", "5Miner2"), as_of_block=0, bundle_seq=-1)
+
+
+def equal_split_of(chain):
+    """The fallback as production builds it: every miner UID with its current chain hotkey."""
+    uids = tuple(u for u in sorted(chain.keys) if u != 0)
+    return WeightVector(uids=uids, weights_u16=tuple(1 for _ in uids), hotkeys=tuple(chain.keys[u] for u in uids),
+                        as_of_block=0, bundle_seq=-1)
 
 
 @dataclass
@@ -238,8 +247,7 @@ def test_tempo_increase_accepts_newer_block_with_lower_sequence():
 def test_changed_hotkey_uid_is_dropped_and_its_share_redistributed():
     chain = FakeChain()
     chain.keys[2] = "5SomeoneElse"
-    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
-    loop, sub, alerts = make(chain, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    loop, sub, alerts = make(chain, fallback_vector=lambda: EQUAL_SPLIT)
     r = loop.tick()[0]
     assert r.status == "confirmed"
     assert sub.calls[0]["uids"] == [1] and sub.calls[0]["weights"] == [1.0]
@@ -283,42 +291,39 @@ def test_replaced_uids_reset_once_hotkeys_match_again():
     assert sub.calls[-1]["uids"] == [1, 2]
 
 
-def test_all_weighted_uids_changed_hotkey_burns_to_owner():
+def test_all_weighted_uids_changed_hotkey_splits_equally():
     chain = FakeChain()
     chain.keys[1] = "5SomeoneElse"
     chain.keys[2] = "5AnotherOne"
-    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
-    loop, sub, alerts = make(chain, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    loop, sub, alerts = make(chain, fallback_vector=lambda: equal_split_of(chain))
     r = loop.tick()[0]
-    assert r.status == "failclosed_burn"
-    assert sub.calls[0]["uids"] == [0]
+    assert r.status == FAILCLOSED_EQUAL_SPLIT
+    assert sub.calls[0]["uids"] == [1, 2] and sub.calls[0]["weights"] == [0.5, 0.5]
     assert "bundle_failclosed" in alerts
 
 
-def test_only_zero_weight_uids_left_burns_to_owner():
+def test_only_zero_weight_uids_left_splits_equally():
     chain = FakeChain()
     chain.keys[1] = "5SomeoneElse"
     vec = lambda c: WeightVector(uids=(1, 2), weights_u16=(65535, 0), hotkeys=("5Miner1", "5Miner2"),
                                  as_of_block=c.head - c.head % c.tempo, bundle_seq=1)
-    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
-    loop, sub, _ = make(chain, vec=vec, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
-    assert loop.tick()[0].status == "failclosed_burn"
+    loop, sub, _ = make(chain, vec=vec, fallback_vector=lambda: equal_split_of(chain))
+    assert loop.tick()[0].status == FAILCLOSED_EQUAL_SPLIT
 
 
-def test_slave_fail_closed_keep_never_uniform():
+def test_slave_fail_closed_without_fallback_sets_nothing():
     chain = FakeChain()
     loop, sub, _ = make(chain, vec=None)
     assert loop.tick()[0].status == "failclosed"
     assert sub.calls == []
 
 
-def test_slave_fail_closed_burn_to_owner_uid():
+def test_slave_fail_closed_splits_equally_never_owner():
     chain = FakeChain()
-    burn = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
-    loop, sub, _ = make(chain, vec=None, failclosed_policy=FAILCLOSED_BURN, burn_vector=lambda: burn)
+    loop, sub, _ = make(chain, vec=None, fallback_vector=lambda: EQUAL_SPLIT)
     r = loop.tick()[0]
-    assert r.status == "failclosed_burn"
-    assert sub.calls[0]["uids"] == [0] and sub.calls[0]["weights"] == [1.0]
+    assert r.status == FAILCLOSED_EQUAL_SPLIT
+    assert sub.calls[0]["uids"] == [1, 2] and sub.calls[0]["weights"] == [0.5, 0.5]
 
 
 def test_nothing_cached_across_loops():
@@ -446,12 +451,11 @@ def test_older_than_previous_slot_is_not_held_back():
     assert len(sub.calls) == 1
 
 
-def test_no_valid_bundle_burns_to_owner_regardless_of_keep_policy():
+def test_no_valid_bundle_splits_equally_regardless_of_keep_policy():
     chain = FakeChain()
-    burn = WeightVector((0,), (65535,), ("5Owner",), 0, -1)
-    loop, sub, alerts = make(chain, vec=None, burn_vector=lambda: burn)
-    assert loop.tick()[0].status == "failclosed_burn"
-    assert sub.calls[0]["uids"] == [0] and "bundle_failclosed" in alerts
+    loop, sub, alerts = make(chain, vec=None, fallback_vector=lambda: EQUAL_SPLIT)
+    assert loop.tick()[0].status == FAILCLOSED_EQUAL_SPLIT
+    assert sub.calls[0]["uids"] == [1, 2] and "bundle_failclosed" in alerts
 
 
 def test_rate_limit_change_adapts_cadence():
@@ -473,23 +477,22 @@ def test_rate_limit_change_adapts_cadence():
 
 # ----------------------------------------------------------------- max stale age
 
-OWNER_BURN = WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",), as_of_block=0, bundle_seq=-1)
 
 
-def test_bundle_beyond_max_stale_age_falls_back_to_owner_burn():
+def test_bundle_beyond_max_stale_age_falls_back_to_equal_split():
     chain = FakeChain()
     loop, sub, alerts = make(chain, vec=lambda c: vector(c.head - 5000),
-                             max_stale_blocks=4320, burn_vector=lambda: OWNER_BURN)
+                             max_stale_blocks=4320, fallback_vector=lambda: EQUAL_SPLIT)
     r = loop.tick()[0]
-    assert r.status == "failclosed_burn"
-    assert sub.calls and sub.calls[0]["uids"] == [0]
+    assert r.status == FAILCLOSED_EQUAL_SPLIT
+    assert sub.calls and sub.calls[0]["uids"] == [1, 2]
     assert "bundle_failclosed" in alerts
 
 
 def test_bundle_within_max_stale_age_is_still_set_as_last_valid():
     chain = FakeChain()
     loop, sub, alerts = make(chain, vec=lambda c: vector(c.head - c.tempo - 61),
-                             max_stale_blocks=4320, burn_vector=lambda: OWNER_BURN)
+                             max_stale_blocks=4320, fallback_vector=lambda: EQUAL_SPLIT)
     r = loop.tick()[0]
     assert r.status == "stale_last_valid"
     assert sub.calls and sub.calls[0]["uids"] == [1, 2]
@@ -498,6 +501,74 @@ def test_bundle_within_max_stale_age_is_still_set_as_last_valid():
 def test_max_stale_zero_keeps_legacy_stale_forever_behaviour():
     chain = FakeChain()
     loop, sub, _ = make(chain, vec=lambda c: vector(c.head - 5000),
-                        max_stale_blocks=0, burn_vector=lambda: OWNER_BURN)
+                        max_stale_blocks=0, fallback_vector=lambda: EQUAL_SPLIT)
     assert loop.tick()[0].status == "stale_last_valid"
     assert sub.calls[0]["uids"] == [1, 2]
+
+
+def test_equal_split_never_includes_owner_and_unavailable_sets_nothing():
+    chain = FakeChain()
+    loop, sub, alerts = make(chain, vec=None, fallback_vector=lambda: None)
+    r = loop.tick()[0]
+    assert r.status == "failclosed" and sub.calls == []
+    assert "equal_split_unavailable" in alerts
+
+
+def test_equal_split_read_error_sets_nothing():
+    chain = FakeChain()
+
+    def boom():
+        raise RuntimeError("metagraph read failed")
+
+    loop, sub, alerts = make(chain, vec=None, fallback_vector=boom)
+    assert loop.tick()[0].status == "failclosed" and sub.calls == []
+
+
+
+@dataclass
+class OwnerChain(FakeChain):
+    """FakeChain that also answers the subnet owner read (production SubstrateReader)."""
+    owner: str | None = "5Owner"
+    owner_fails: bool = False
+
+    def owner_hotkey(self, netuid):
+        if self.owner_fails:
+            raise ConnectionError("owner read failed")
+        return self.owner
+
+
+def test_owner_row_in_a_stored_bundle_is_dropped_never_paid():
+    # A bundle verified before never-burn (an older master's no-earner epoch) can carry
+    # an owner row; the loop drops it and pays the miners that are left.
+    chain = OwnerChain()
+    vec = lambda c: WeightVector(uids=(0, 1, 2), weights_u16=(65535, 10000, 10000),
+                                 hotkeys=("5Owner", "5Miner1", "5Miner2"),
+                                 as_of_block=c.head - c.head % c.tempo, bundle_seq=1)
+    loop, sub, _ = make(chain, vec=vec, fallback_vector=lambda: equal_split_of(chain))
+    assert loop.tick()[0].status == "confirmed"
+    assert sub.calls[0]["uids"] == [1, 2] and sub.calls[0]["weights"] == [0.5, 0.5]
+
+
+def test_bundle_weighting_only_the_owner_falls_back_to_the_equal_split():
+    chain = OwnerChain()
+    vec = lambda c: WeightVector(uids=(0,), weights_u16=(65535,), hotkeys=("5Owner",),
+                                 as_of_block=c.head - c.head % c.tempo, bundle_seq=1)
+    loop, sub, alerts = make(chain, vec=vec, fallback_vector=lambda: equal_split_of(chain))
+    assert loop.tick()[0].status == FAILCLOSED_EQUAL_SPLIT
+    assert 0 not in sub.calls[0]["uids"] and "bundle_failclosed" in alerts
+
+
+def test_equal_split_drops_owner_and_stale_hotkeys_from_the_fallback():
+    chain = OwnerChain()
+    chain.keys[2] = "5MovedOn"
+    stale = WeightVector(uids=(0, 1, 2), weights_u16=(1, 1, 1), hotkeys=("5Owner", "5Miner1", "5Miner2"),
+                         as_of_block=0, bundle_seq=-1)
+    loop, sub, _ = make(chain, vec=None, fallback_vector=lambda: stale)
+    assert loop.tick()[0].status == FAILCLOSED_EQUAL_SPLIT
+    assert sub.calls[0]["uids"] == [1]
+
+
+def test_failed_owner_read_sets_no_weights():
+    chain = OwnerChain(owner_fails=True)
+    loop, sub, _ = make(chain, fallback_vector=lambda: equal_split_of(chain))
+    assert loop.tick()[0].status == "error" and sub.calls == []

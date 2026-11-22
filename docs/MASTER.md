@@ -83,7 +83,7 @@ Set `WALLET_NAME`, `HOTKEY_NAME`, `WALLET_PATH` (if needed) and `BUNDLE_STATE_DI
 | `ALLOCATION_ALLOW_PLAINTEXT` | Keep `false`. |
 | `BUNDLE_IPFS_API_URL` | The Kubo RPC base with publication rights. Required for `BUNDLE_ROLE=master`. |
 
-Keep `BUNDLE_ROLE=master`, the pinned master address and the rest of the template as shipped. The template sets `INCENTIVE_V3_READINESS_MODE=shares`, `INCENTIVE_V3_BURN_UNEARNED=false` and `INCENTIVE_V3_READINESS_SPLIT=0.40`; keep them explicit, because the parser defaults `INCENTIVE_V3_BURN_UNEARNED` to `true` if omitted. `INCENTIVE_V3_SLOT_WINDOW_HOURS=48` must match the API's 172800-second slot window. An existing master keeps its existing `bundle_state`; never reuse a secondary's.
+Keep `BUNDLE_ROLE=master`, the pinned master address and the rest of the template as shipped. The template sets `INCENTIVE_V3_READINESS_MODE=shares` and `INCENTIVE_V3_READINESS_SPLIT=0.40`; keep them explicit. `INCENTIVE_V3_SLOT_WINDOW_HOURS=48` must match the API's 172800-second slot window. An existing master keeps its existing `bundle_state`; never reuse a secondary's.
 
 ## 4. Check the configuration, API and IPFS
 
@@ -161,7 +161,6 @@ signed vector; they do not select a different payout policy.
 |---|---|---|
 | `INCENTIVE_V3_READINESS_SPLIT` | `0.40` | Allocate 40% of each tier budget to readiness and 60% to delivered service. |
 | `INCENTIVE_V3_READINESS_MODE` | `shares` | Pay every eligible miner a readiness share based on quality. `slots` instead pays the four slot holders per tier. |
-| `INCENTIVE_V3_BURN_UNEARNED` | `false` | Redistribute unearned units among miners that earned units, subject to the bundle's per-miner cap. |
 
 ### Readiness
 
@@ -192,15 +191,16 @@ operators.
 
 Service allocation depends on demand and each eligible miner's credited work.
 Missing per-miner credit earns no service units. The storage reward pool is
-disabled in this release; its unused units follow the same burn or redistribution
-policy as other unearned units.
+disabled in this release; its unused units are redistributed like other unearned
+units.
 
-With `INCENTIVE_V3_BURN_UNEARNED=true`, unearned units go to the owner/burn UID.
-With the template's `false`, the allocator redistributes them in proportion to
-units already earned. If a miner reaches the bundle's row cap, the excess is
-redistributed among the remaining earning miners. Any remainder that cannot fit
-under those caps still goes to the owner/burn UID. If no miner earns units, all
-100 units go there.
+Recall never burns: no weight goes to the owner UID. The allocator redistributes
+unearned units in proportion to units already earned. If a miner reaches the
+bundle's row cap, the excess goes to the remaining earning miners. Any remainder
+that cannot fit under those caps is split equally across every other miner on the
+subnet, and if no miner earns units, all 100 units are split equally across every
+miner (the subnet owner hotkey and active validators excluded). The epoch record
+then carries `equal_split_units`. `INCENTIVE_V3_BURN_UNEARNED` and `WEIGHT_FAILCLOSED_POLICY` are removed: if still set they are ignored with a warning.
 
 The initial per-miner cap uses the number of eligible miners. Redistribution's
 bundle row cap uses the number of paid miners; both include encoding safeguards.

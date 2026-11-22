@@ -2,8 +2,7 @@
 
 Every value here is a CANDIDATE setting from the incentive-v3 launch profile and
 the synthetic harness rerun; score_version 11 is the only scoring path. Units: the
-subnet's miner emission per epoch is 100 units; whatever is not paid to a miner goes
-to the owner/burn UID.
+subnet's miner emission per epoch is 100 units, all paid to miners (nothing burns).
 """
 
 from __future__ import annotations
@@ -66,7 +65,8 @@ def service_pools(split: float) -> dict:
     }
 
 
-# Storage retention proof is not proven end-to-end: the storage pool ALWAYS burns.
+# Storage retention proof is not proven end-to-end: the storage pool is always unearned
+# (redistributed to the earning miners).
 # Deliberately a code constant, not an env flag (enabling it needs a reviewed PR).
 STORAGE_REWARDS_ENABLED = False
 
@@ -82,7 +82,7 @@ DEMAND_HALF_LIFE_EPOCHS = 10
 DEMAND_LAMBDA = 1.0 - 2.0 ** (-1.0 / DEMAND_HALF_LIFE_EPOCHS)  # 0.0670
 DEMAND_DELTA_UP = 0.25
 
-# Per-miner cap (units) = max(10, 200 / n_eligible); overflow burns.
+# Per-miner cap (units) = max(10, 200 / n_eligible); overflow is unearned (redistributed).
 PER_MINER_CAP_FLOOR = 10.0
 PER_MINER_CAP_NUMERATOR = 200.0
 

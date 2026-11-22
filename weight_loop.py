@@ -35,8 +35,9 @@ Rules (subtensor spec 477):
   verified bundle -> alert ``bundle_failclosed`` and keep SETTING weights from the
   last valid verified bundle (uids re-checked against live chain hotkeys). A UID whose
   hotkey changed since the bundle is dropped and its share goes pro rata to the miners
-  that still match; never burn while a valid miner has weight. No valid bundle at all
-  -> burn 100% to the proven owner/immune UID. Never uniform.
+  that still match. No valid bundle at all (or no miner left in it) -> equal split
+  across every miner on the subnet (``equal_split``). Recall never burns: no path
+  sends weight to the subnet owner's UID.
 """
 
 from __future__ import annotations
@@ -55,8 +56,8 @@ logger = logging.getLogger("recall.weight_loop")
 
 DEFAULT_DUE_MARGIN = 15
 MAX_TRANSIENT_ATTEMPTS = 3
-FAILCLOSED_KEEP = "keep"
-FAILCLOSED_BURN = "burn"
+# Loop status when no valid bundle exists and the weights are split equally across miners.
+FAILCLOSED_EQUAL_SPLIT = "failclosed_equal_split"
 
 # Chain errors that need an operator, not a retry.
 ALERT_ERRORS = (
@@ -199,10 +200,10 @@ class WeightLoop:
     margin: int = DEFAULT_DUE_MARGIN
     bundle_grace_blocks: int = 60
     # 0 = legacy (re-set the last valid vector forever); > 0 = above this age the
-    # vector is treated as invalid and the loop falls back to the owner burn vector.
+    # vector is treated as invalid and the loop falls back to the equal split.
     max_stale_blocks: int = 0
-    failclosed_policy: str = FAILCLOSED_KEEP
-    burn_vector: Callable[[], WeightVector | None] = lambda: None
+    # Equal weight for every miner on the subnet; None (unavailable) sets no weights.
+    fallback_vector: Callable[[], WeightVector | None] = lambda: None
     alert: Callable[[str, str], None] | None = None
     _mech: dict[int, _MechState] = field(default_factory=dict)
     alert_counts: dict[str, int] = field(default_factory=dict)
@@ -256,6 +257,13 @@ class WeightLoop:
         st.bundle_age_blocks = age
         if age < 0:
             return None, "", f"bundle as_of_block {vec.as_of_block} is ahead of head {p.head}"
+        owner = self._owner_rows(vec, reader)
+        if owner:
+            # Recall never weights the subnet owner. A bundle verified before this rule
+            # (an older master's no-earner bundle) may still carry an owner row: drop it.
+            vec = without_uids(vec, owner)
+            if sum(vec.weights_u16) <= 0:
+                return None, "", "bundle weights only the subnet owner; no miner weight left"
         bad = self._invalid_uids(vec, reader)
         st.replaced_uids = bad
         if bad:
@@ -274,6 +282,15 @@ class WeightLoop:
         if vec.as_of_block < current_as_of:
             return vec, f"awaiting current-slot bundle: {vec.as_of_block} < {current_as_of}", ""
         return vec, "", ""
+
+    def _owner_rows(self, vec: WeightVector, reader=None) -> list[int]:
+        """UIDs of rows that pay the subnet owner hotkey (read at the pinned head)."""
+        reader = reader if reader is not None else self.reader
+        read_owner = getattr(reader, "owner_hotkey", None)
+        if read_owner is None:
+            return []
+        owner = read_owner(self.netuid)
+        return [uid for uid, hk in zip(vec.uids, vec.hotkeys) if owner and hk == owner]
 
     def _invalid_uids(self, vec: WeightVector, reader=None) -> list[int]:
         reader = reader if reader is not None else self.reader
@@ -375,12 +392,22 @@ class WeightLoop:
             self._alert("bundle_failclosed", f"{stale}; setting last valid bundle seq {vec.bundle_seq}")
             status = "stale_last_valid"
         elif vec is None:
-            self._alert("bundle_failclosed", f"{invalid}; burning to owner uid")
-            vec = self.burn_vector()
-            if vec is None:
-                self._alert("burn_unresolved", f"owner burn uid unresolved: {invalid}")
-                return LoopResult(mechid, "failclosed", f"burn uid unresolved: {invalid}")
-            status = "failclosed_burn"
+            self._alert("bundle_failclosed", f"{invalid}; splitting equally across all miners")
+            try:
+                vec = self.fallback_vector()
+                if vec is not None:
+                    # Same checks as a bundle: rows match the chain at the pinned head and
+                    # none pays the subnet owner.
+                    vec = without_uids(vec, self._owner_rows(vec, reader) + self._invalid_uids(vec, reader))
+            except Exception as exc:
+                vec = None
+                invalid = f"{invalid}; equal split read failed: {exc}"
+            if vec is None or sum(vec.weights_u16) <= 0:
+                # Never burn: with no miner list, set nothing this window (chain keeps the
+                # last weights) and retry next tick.
+                self._alert("equal_split_unavailable", f"no miner list for the equal split: {invalid}")
+                return LoopResult(mechid, "failclosed", f"equal split unavailable: {invalid}")
+            status = FAILCLOSED_EQUAL_SPLIT
 
         total = sum(vec.weights_u16)
         if total <= 0:
@@ -400,7 +427,7 @@ class WeightLoop:
 
     def _confirm(self, mechid, st, p, vec, res: SubmitResult, status) -> LoopResult:
         if res.status is not None:
-            if res.success and status != "failclosed_burn":
+            if res.success and status != FAILCLOSED_EQUAL_SPLIT:
                 st.last_as_of = max(st.last_as_of, vec.as_of_block)
             outcome = status if res.status == "confirmed" and status != "submitted" else res.status
             return LoopResult(mechid, outcome, res.message)
@@ -416,7 +443,7 @@ class WeightLoop:
                 return LoopResult(mechid, "alert", res.message)
             st.not_before = p.head + 2 ** st.attempts
             return LoopResult(mechid, "error", f"transient ({st.attempts}/{MAX_TRANSIENT_ATTEMPTS}): {res.message}")
-        if status != "failclosed_burn":
+        if status != FAILCLOSED_EQUAL_SPLIT:
             st.last_as_of = max(st.last_as_of, vec.as_of_block)
         if p.commit_reveal:
             # LastUpdate can advance at commit inclusion. Only a finalized
@@ -469,6 +496,14 @@ class SubstrateReader:
         v = self._q("Keys", [netuid, uid], head.hash)
         if v is not None and not isinstance(v, str):
             raise CadenceReadError("Keys unreadable at the finalized block")
+        return v or None
+
+    def owner_hotkey(self, netuid: int) -> str | None:
+        """The subnet owner hotkey at the finalized head (None: no owner set). A failed
+        read raises, so the caller sets no weights this window rather than risk paying it."""
+        v = self._q("SubnetOwnerHotkey", [netuid], self._head().hash)
+        if v is not None and not isinstance(v, str):
+            raise CadenceReadError("SubnetOwnerHotkey unreadable at the finalized block")
         return v or None
 
     def last_update(self, netuid: int, mechid: int, uid: int) -> int | None:
@@ -566,11 +601,14 @@ def weight_vector_from_store(state_dir: str, netuid: int) -> WeightVector | None
     )
 
 
-def owner_burn_vector(subtensor, metagraph, netuid: int) -> WeightVector | None:
-    """Fail-closed burn: 100% to the proven owner/immune UID (existing Recall policy)."""
-    from owner_burn import resolve_owner_burn_uid
+def equal_split_vector(subtensor, netuid: int, exclude_hotkeys=()) -> WeightVector | None:
+    """Fallback when no valid bundle exists: equal weight for every miner on the subnet
+    (owner hotkey and active validators excluded; see ``equal_split``). Recall never
+    burns. Returns None when the subnet has no miner."""
+    from equal_split import chain_miners
 
-    uid, hotkey = resolve_owner_burn_uid(subtensor, metagraph, netuid)
-    if uid is None or hotkey is None:
+    miners = chain_miners(subtensor, netuid, exclude_hotkeys=exclude_hotkeys)
+    if not miners:
         return None
-    return WeightVector(uids=(uid,), weights_u16=(65535,), hotkeys=(hotkey,), as_of_block=0, bundle_seq=-1)
+    return WeightVector(uids=tuple(u for u, _ in miners), weights_u16=tuple(1 for _ in miners),
+                        hotkeys=tuple(h for _, h in miners), as_of_block=0, bundle_seq=-1)

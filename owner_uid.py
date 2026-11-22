@@ -1,23 +1,22 @@
-"""Owner/burn UID resolution from finalized chain storage.
+"""Subnet owner UID resolution from finalized chain storage.
 
-The incentive v3 allocator pays everything it does not pay to a miner to the subnet
-owner hotkey's UID; the weight loop falls back to the same UID; consumers verify the
-signed burn row against it. This module proves that UID at one finalized head.
+Recall never pays the owner UID. Bundle checks use this module to prove the owner
+hotkey at one finalized head and refuse any bundle that weights it.
 """
 
 from __future__ import annotations
 
 
 class OwnerReadError(Exception):
-    """The owner/burn chain reads failed; this is not proof that no owner exists."""
+    """The owner chain reads failed; this is not proof that no owner exists."""
 
 
-def resolve_owner_burn_uid(
+def resolve_owner_uid(
     subtensor, metagraph, netuid: int, *, strict: bool = False,
 ) -> tuple[int | None, str | None]:
     """Prove the registered subnet-owner hotkey at one finalized chain head.
 
-    Sharing the owner's coldkey does not make another hotkey a burn target.
+    Sharing the owner's coldkey does not make another hotkey the owner.
     ``metagraph`` remains in the signature for callers but is intentionally not
     consulted: its UID mapping may predate registration changes.
 

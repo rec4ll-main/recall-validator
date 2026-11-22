@@ -117,7 +117,7 @@ pm2 logs recall-validator --lines 2000 --nostream | grep 'weight loop: ' | grep 
 | Status | Meaning |
 |---|---|
 | `stale_last_valid` | Weights were set from an older verified bundle because no fresh one was available. |
-| `failclosed_burn` | No usable bundle, or no miner in it still holds its UID, so all weight went to the subnet owner's UID. Normal only on a first start, before the first bundle is verified. |
+| `failclosed_equal_split` | No usable bundle, or no miner in it still holds its UID, so the weight was split equally across every miner on the subnet. Recall never gives weight to the subnet owner's UID. Normal only on a first start, before the first bundle is verified. |
 | `pending_reveal` | Commit-reveal is on: the commit is waiting for the chain to reveal it. Leave it alone. |
 | `waiting` | A retry or an earlier attempt is pending; the reason says why. |
 | `alert`, `error`, `failclosed` | Needs attention; see [Troubleshooting](#troubleshooting). |
@@ -159,10 +159,10 @@ Coming from a release that had `INCENTIVE_V3_MODE`: delete `INCENTIVE_V3_MODE`, 
 ## Operating notes
 
 - **Replaced miners:** when a miner's UID is taken by a new hotkey after the bundle was built, the validator leaves that UID out and shares its weight out among the other miners in proportion to their weights. It logs a warning naming the UIDs and keeps setting weights.
-- **Stale or missing bundles:** the validator keeps setting the last verified weights (`stale_last_valid`) for the miners whose hotkeys still match the chain, and raises a `bundle_failclosed` alert. With no usable bundle at all it gives all weight to the subnet owner's UID (`failclosed_burn`), or submits nothing if that UID cannot be proven (`failclosed`).
-- **Rejected bundles:** a publication that fails verification is never fetched again. The last verified weights stay in use until a later publication passes.
+- **Stale or missing bundles:** the validator keeps setting the last verified weights (`stale_last_valid`) for the miners whose hotkeys still match the chain, and raises a `bundle_failclosed` alert. With no usable bundle at all it splits the weight equally across every miner on the subnet (`failclosed_equal_split`), or submits nothing if it cannot read the miner list (`failclosed`). It never gives weight to the subnet owner's UID.
+- **Rejected bundles:** a publication that fails verification is never fetched again. That includes any bundle with a row for the subnet owner's UID: Recall never weights the owner. The last verified weights stay in use until a later publication passes.
 - **Don't force retries:** never delete `bundle_state`, its journals or its lock to get past an error, and don't run a second process for the same hotkey. After a timeout or a pending reveal, let the validator finish on its own.
-- **Payout rules** (whether unearned units burn, the readiness share and who readiness pays) are set by the master and signed into each bundle. A secondary sets none of them.
+- **Payout rules** (the readiness share and who readiness pays; unearned units never burn) are set by the master and signed into each bundle. A secondary sets none of them.
 - **Logs:** a configuration error can print setting values in a traceback. Redact before sharing logs.
 
 ## Troubleshooting

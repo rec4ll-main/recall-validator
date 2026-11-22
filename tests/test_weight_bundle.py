@@ -10,7 +10,6 @@ import hashlib
 import json
 from pathlib import Path
 
-from main import dedup_recommended_uids
 from weight_bundle import (
     FAIL_BUNDLE_HASH,
     FAIL_EPOCH,
@@ -134,23 +133,6 @@ def test_wrong_schema_fails_closed():
     ok, reason, _ = _verify(fx, data=data)
     assert ok is False
     assert reason == FAIL_SCHEMA
-
-
-def test_dedup_applied_at_verification_log_only():
-    """The bundle weights are pre-coldkey-dedup; the slave dedups for reporting."""
-    fx = load_fixture()
-    bundle = json.loads(fx["bundle_json"])
-    # Map bundle hotkeys to synthetic uids 0,1,2 and give two of them the same
-    # coldkey so dedup collapses them.
-    hotkeys = [w["hotkey"] for w in bundle["weights"]]
-    uid_by_hotkey = {hk: i for i, hk in enumerate(hotkeys)}
-    resolved = [(uid_by_hotkey[w["hotkey"]], float(w["weight"])) for w in bundle["weights"]]
-    coldkeys = ["cold-A", "cold-A", "cold-B"]
-    reg_blocks = [100, 200, 50]
-    deduped = dedup_recommended_uids(resolved, coldkeys, reg_blocks)
-    # cold-A has two uids (0@100, 1@200) -> keep the later registration (uid 1).
-    assert len(deduped) == 2
-    assert dict(deduped)[1] == resolved[1][1]
 
 
 def test_verify_is_pure_no_side_effects():

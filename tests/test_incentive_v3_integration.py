@@ -187,9 +187,9 @@ def test_end_to_end_v11_master_sign_then_slave_applies(tmp_path, monkeypatch):
     env = build_envelope(w.sub, FakeMetagraph(), FakeWallet(MASTER), w.cfg(), w.schedule(E1), fetch=None)
     b = parse_bundle(env).payload
     assert (b.score_version, b.score_kind, b.evidence_window_seconds) == ("11", "readiness_service_v3", 21600)
-    assert b.uids[0] == 0 and 6 not in b.uids                 # burn row first; serious miner unpaid
+    assert 0 not in b.uids and 6 not in b.uids               # never burns; serious miner unpaid
     shares = [v / sum(b.weights_u16) for v in b.weights_u16]
-    assert shares[0] > 0.8                                    # quiet network: most emission burns
+    assert abs(sum(shares) - 1.0) < 1e-9 and all(s > 0 for s in shares)  # quiet network: all to miners
     w.blocks[publish_pointer(w.chain, env, E1 + 5)] = env
     w.chain.advance_to(E1 + 20)
     out = slave_consume(w.sub, FakeMetagraph(), FakeWallet(SLAVE), w.cfg(role="slave"))
@@ -271,6 +271,6 @@ def test_go_generated_evidence_parses_and_allocates():
     assert ev.demand["vdb_query"] == 12.0 and len(ev.miners) == 3
     snap = [(1, "hk-healthy", "ck1", 10), (2, "hk-db-only", "ck2", 11), (3, "hk-none", "ck3", 12)]
     miners = to_miner_evidence(ev, snap)
-    r = allocate_v3(miners, ev.demand, None, 7200)
-    assert abs(sum(r.units_by_uid.values()) + r.burn_units - 100.0) < 1e-9
+    r = allocate_v3(miners, ev.demand, None, 7200, redistribute=False)
+    assert abs(sum(r.units_by_uid.values()) + r.unassigned_units - 100.0) < 1e-9
     assert 3 not in r.units_by_uid or r.units_by_uid[3] == 0

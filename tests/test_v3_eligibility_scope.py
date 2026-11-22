@@ -69,7 +69,7 @@ class World:
     def compute(self, cfg=None):
         from v3_runtime import compute_v3_epoch
         return compute_v3_epoch(self.sub, FakeMetagraph(), FakeWallet(MASTER), cfg or self.cfg,
-            self.schedule, fetch=self.fetch, resolve_burn=lambda *a: (0, OWNER.ss58_address))
+            self.schedule, fetch=self.fetch)
 
 
 @pytest.mark.parametrize("scope", ["", "grounded-v1"])

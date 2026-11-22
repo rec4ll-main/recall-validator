@@ -3,15 +3,18 @@
 Per epoch (100 units of miner emission):
   * readiness pools R_t = budget_t * READINESS_SPLIT, K slots per tier, each slot worth
     R_t/K; a holder earns (R_t/K) * r * g (r = min-check decayed pass rate x latency x
-    capacity factor, g = stage weight); everything not earned burns;
+    capacity factor, g = stage weight); everything not earned is unearned (see below);
     that is readiness_mode="slots"; the default "shares" instead pays every tier-eligible
     miner R_t * q / max(sum q, K) with q = r * g (at most one slot's pay each while
     sum q <= K); the slot table still advances in both modes;
   * service pools P_s: f_s * P_s is paid among *tier-eligible* miners in proportion to
-    credited service (stage-weighted), (1 - f_s) * P_s burns; f from the demand ramp;
-  * the storage pool always burns while STORAGE_REWARDS_ENABLED is False;
-  * per-miner cap max(10, 200/n_eligible) units, less a u16 rounding margin; overflow burns;
-  * every burned unit goes to the owner/immune burn UID (resolved by the caller).
+    credited service (stage-weighted), (1 - f_s) * P_s is unearned; f from the demand ramp;
+  * the storage pool is entirely unearned while STORAGE_REWARDS_ENABLED is False;
+  * per-miner cap max(10, 200/n_eligible) units, less a u16 rounding margin; overflow is
+    unearned;
+  * nothing ever burns: unearned units are paid to the earning miners pro rata under the
+    bundle row cap, and whatever they cannot take (everything, when nobody earned) is split
+    equally across all miners (``fallback_miners``).
 Serious failures (isolation breach, retention-proof mismatch) make the miner ineligible
 in every tier for the epoch and reset its stage. No randomness, no I/O.
 """
@@ -68,10 +71,16 @@ class V3Result:
     epoch_start_block: int
     units_by_uid: dict[int, float] = field(default_factory=dict)
     hotkey_by_uid: dict[int, str] = field(default_factory=dict)
-    burn_units: float = 0.0
-    burn_by_reason: dict[str, float] = field(default_factory=dict)
-    # With burn_unearned=False: what would have burned, by reason, now paid to miners.
+    # Units no miner earned this epoch, by reason (before redistribution).
+    unearned_by_reason: dict[str, float] = field(default_factory=dict)
+    # Unearned units paid to the earning miners pro rata, by reason.
     redistributed_by_reason: dict[str, float] = field(default_factory=dict)
+    # Units not assigned to any miner. Always 0 when redistributing (production); with
+    # redistribute=False (analysis only) it is the unearned total. Never encodable.
+    unassigned_units: float = 0.0
+    # Units split equally across all miners because no earning miner could take them
+    # (all 100 when nobody earned). Never burned.
+    equal_split_units: float = 0.0
     eligible: dict[str, list[str]] = field(default_factory=dict)
     holders: dict[str, list[str]] = field(default_factory=dict)
     # readiness_mode="shares" only: tier -> hotkeys paid readiness this epoch.
@@ -123,8 +132,8 @@ def _u16_safe_share(cap_share: float, n_rows: int) -> float:
 
 def verifier_cap_units(n_paid: int) -> float:
     """Units a miner may hold so the bundle row check accepts it: the per-row miner cap
-    max(0.10, 2/N) over the paid miner rows, less the u16 rounding margin (burn row
-    counted in N for the margin)."""
+    max(0.10, 2/N) over the paid miner rows, less the u16 rounding margin (one extra row
+    counted in N for the margin, as the verifier rounds)."""
     from allocation import CAP_FLOOR, CAP_TWO_OVER_N
 
     n = max(1, int(n_paid))
@@ -162,15 +171,19 @@ def water_fill(earned: dict[int, float], total: float, cap: float) -> tuple[dict
 def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: dict | None,
                 epoch_start_block: int, rule: SlotRule = DEFAULT_RULE,
                 k: int = SLOTS_PER_TIER, readiness_split: float = READINESS_SPLIT,
-                burn_unearned: bool = True, readiness_mode: str = READINESS_MODE_DEFAULT) -> V3Result:
-    """Advance the v3 state by one epoch and return units per uid + burn.
+                redistribute: bool = True, readiness_mode: str = READINESS_MODE_DEFAULT,
+                fallback_miners: dict[int, str] | None = None) -> V3Result:
+    """Advance the v3 state by one epoch and return units per uid (always 100 in total).
 
     readiness_split sets the readiness share of each tier budget (default 0.40, so 60%
-    service). With burn_unearned=False, whatever would burn is paid to the miners in
-    proportion to the units they earned, water-filled under the bundle row cap for the
-    paid set (``verifier_cap_units``); the owner/burn UID gets weight only when no miner
-    earned anything (or, never in practice, when the cap cannot absorb 100 units).
-    Stages, slots and ramps are identical in both modes.
+    service). Unearned units are paid to the miners in proportion to the units they
+    earned, water-filled under the bundle row cap for the paid set
+    (``verifier_cap_units``); whatever they cannot take, and all 100 units when no miner
+    earned anything, is split equally across ``fallback_miners`` (every miner on the
+    subnet). Nothing burns; without a miner list for that split the call raises.
+    redistribute=False (analysis only, never encodable) returns the earned units alone
+    and reports the rest as ``unassigned_units``. Stages, slots and ramps are identical
+    either way.
 
     readiness_mode="slots" pays readiness to the K slot holders of each tier. "shares"
     (default) pays every tier-eligible miner (eligible, stage weight > 0) the share
@@ -282,7 +295,7 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
                     paid += u
         if paid > pool + 1e-9:
             raise ValueError(f"readiness pool exceeded for {tier}")
-        _add(res.burn_by_reason, f"readiness_unearned:{tier}", max(0.0, pool - paid))
+        _add(res.unearned_by_reason, f"readiness_unearned:{tier}", max(0.0, pool - paid))
 
     # service pools
     new_ramps: dict = {}
@@ -291,7 +304,7 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
         new_ramps[name] = ramp
         res.f[name] = f
         if name == "vdb_storage" and not STORAGE_REWARDS_ENABLED:
-            _add(res.burn_by_reason, "storage_disabled", pool)
+            _add(res.unearned_by_reason, "storage_disabled", pool)
             continue
         elig = res.eligible[tier]
         weights = {}
@@ -300,7 +313,7 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
             ev = by_id[h].tiers.get(tier)
             cred = (ev.credited or {}).get(name) if ev else None
             # Missing credit is ZERO credit: a pool with demand but
-            # no per-miner credited service burns instead of splitting by stage weight.
+            # no per-miner credited service is unearned instead of splitting by stage weight.
             if cred is None:
                 weights[h] = 0.0
             elif isinstance(cred, (int, float)) and not isinstance(cred, bool) and math.isfinite(cred) and cred >= 0:
@@ -310,7 +323,7 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
         tw = math.fsum(weights.values())
         paid_pool = pool * f
         if tw <= 0 or paid_pool <= 0:
-            _add(res.burn_by_reason, f"service_unpaid:{name}", pool)
+            _add(res.unearned_by_reason, f"service_unpaid:{name}", pool)
             continue
         paid = 0.0
         for h, w in weights.items():
@@ -318,7 +331,7 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
                 u = paid_pool * w / tw
                 _add(raw, h, u)
                 paid += u
-        _add(res.burn_by_reason, f"service_unpaid:{name}", pool - paid)
+        _add(res.unearned_by_reason, f"service_unpaid:{name}", pool - paid)
 
     # per-miner cap
     # Kept strictly under the bundle row cap after u16 rounding: a miner exactly at the
@@ -329,48 +342,80 @@ def allocate_v3(miners: list[MinerEvidence], demand: dict[str, float], state: di
     cap = TOTAL_UNITS * _u16_safe_share(min(1.0, cap / TOTAL_UNITS), n_paid + 1)
     for h, u in raw.items():
         if u > cap:
-            _add(res.burn_by_reason, "per_miner_cap", u - cap)
+            _add(res.unearned_by_reason, "per_miner_cap", u - cap)
             u = cap
         if u > 0:
             res.units_by_uid[by_id[h].uid] = u
-    res.burn_units = TOTAL_UNITS - math.fsum(res.units_by_uid.values())
-    if res.burn_units < -UNIT_TOL:
+    unearned = TOTAL_UNITS - math.fsum(res.units_by_uid.values())
+    if unearned < -UNIT_TOL:
         raise ArithmeticError("v3 allocation exceeds 100 units")
-    res.burn_units = max(0.0, res.burn_units)
-    if abs(math.fsum(res.burn_by_reason.values()) - res.burn_units) > 1e-6:
-        raise ArithmeticError("v3 burn accounting mismatch")
-    paid = math.fsum(res.units_by_uid.values())
-    if not burn_unearned and paid > 0:
-        # Pay everything to the miners in proportion to what they earned, but never above
-        # the per-row cap the bundle check enforces for the paid set (a flat rescale let
-        # a miner exceed it, and the master refused its own bundle). Water-filling moves
-        # the excess to the unclamped miners; whatever no miner can take still burns.
-        would_burn = res.burn_units
-        units, left = water_fill(res.units_by_uid, TOTAL_UNITS, verifier_cap_units(len(res.units_by_uid)))
-        res.units_by_uid = units
-        kept = 1.0 - left / would_burn if would_burn > 0 else 1.0
-        res.redistributed_by_reason = {r: v * kept for r, v in res.burn_by_reason.items()}
-        res.burn_by_reason = {"verifier_cap": left} if left > 0 else {}
-        res.burn_units = left
-        if abs(math.fsum(res.units_by_uid.values()) + left - TOTAL_UNITS) > 1e-6:
-            raise ArithmeticError("v3 redistribution does not sum to 100 units")
-        if abs(math.fsum(res.redistributed_by_reason.values()) + left - would_burn) > 1e-6:
+    unearned = max(0.0, unearned)
+    if abs(math.fsum(res.unearned_by_reason.values()) - unearned) > 1e-6:
+        raise ArithmeticError("v3 unearned accounting mismatch")
+    if not redistribute:
+        res.unassigned_units = unearned
+    else:
+        if res.units_by_uid and unearned > 0:
+            # Pay everything to the miners in proportion to what they earned, but never above
+            # the per-row cap the bundle check enforces for the paid set (a flat rescale let
+            # a miner exceed it, and the master refused its own bundle). Water-filling moves
+            # the excess to the unclamped miners.
+            units, left = water_fill(res.units_by_uid, TOTAL_UNITS, verifier_cap_units(len(res.units_by_uid)))
+            res.units_by_uid = units
+            kept = 1.0 - left / unearned
+            res.redistributed_by_reason = {r: v * kept for r, v in res.unearned_by_reason.items()}
+        if TOTAL_UNITS - math.fsum(res.units_by_uid.values()) > UNIT_TOL:
+            _equal_split_remainder(res, fallback_miners)
+        if abs(math.fsum(res.units_by_uid.values()) - TOTAL_UNITS) > 1e-6:
+            raise ArithmeticError("v3 allocation does not pay 100 units to miners")
+        if abs(math.fsum(res.redistributed_by_reason.values()) + res.equal_split_units - unearned) > 1e-6:
             raise ArithmeticError("v3 redistribution accounting mismatch")
     res.state = {"last_epoch": epoch_start_block, "stages": new_stages, "carry": new_carry,
                  "slots": new_slots, "ramps": new_ramps, "identities": new_ids}
     return res
 
 
-def encode_v3(result: V3Result, burn_uid: int, burn_hotkey: str):
-    """Encode units + burn row to the SDK u16 vector. Returns (uids, hotkeys, weights_u16)."""
+def _equal_split_remainder(res: V3Result, fallback_miners: dict[int, str] | None) -> None:
+    """Never burn: give the units no earning miner could take to every miner on the subnet.
+
+    Nobody earned: all 100 units in equal shares. Otherwise the earning miners keep their
+    pro rata units, water-filled under the bundle row cap for the larger row set, and the
+    rest is split equally across the other miners. Raises (the epoch fails closed; the
+    validators keep setting the last bundle or split equally themselves) when there is
+    no miner to pay."""
+    if not fallback_miners:
+        raise ArithmeticError("v3: units left unassigned and no miner list for the equal split; refusing to burn")
+    before = math.fsum(res.units_by_uid.values())
+    others = {int(u): str(h) for u, h in fallback_miners.items() if int(u) not in res.units_by_uid}
+    cap = verifier_cap_units(len(res.units_by_uid) + len(others))
+    if res.units_by_uid:
+        units, rest = water_fill(res.units_by_uid, TOTAL_UNITS, cap)
+    else:
+        units, rest = {}, TOTAL_UNITS
+    if rest > UNIT_TOL:
+        if not others:
+            raise ArithmeticError("v3: no other miner to take the remaining units; refusing to burn")
+        extra, unplaced = water_fill({u: 1.0 for u in others}, rest, cap)
+        if unplaced > UNIT_TOL:
+            raise ArithmeticError("v3: equal split cannot place all units under the row cap; refusing to burn")
+        units.update(extra)
+        for u in extra:
+            res.hotkey_by_uid[u] = others[u]
+    res.units_by_uid = units
+    res.equal_split_units = TOTAL_UNITS - before
+
+
+def encode_v3(result: V3Result):
+    """Encode the miner units to the SDK u16 vector. Returns (uids, hotkeys, weights_u16).
+    Every row is a miner; a result with unassigned units (redistribute=False) is refused."""
     from allocation import normalize_uid_weight_pairs
     from allocation_encoding import convert_weights_and_uids, validate_encoding
 
-    if burn_uid in result.units_by_uid:
-        raise ValueError("burn uid collides with a paid miner")
-    uids = list(result.units_by_uid) + [int(burn_uid)]
-    shares = [result.units_by_uid[u] / TOTAL_UNITS for u in result.units_by_uid] + [result.burn_units / TOTAL_UNITS]
-    hotkeys = [result.hotkey_by_uid[u] for u in result.units_by_uid] + [str(burn_hotkey)]
+    if result.unassigned_units > UNIT_TOL:
+        raise ValueError("v3 result has unassigned units; only a fully assigned allocation is encodable")
+    uids = list(result.units_by_uid)
+    shares = [result.units_by_uid[u] / TOTAL_UNITS for u in result.units_by_uid]
+    hotkeys = [result.hotkey_by_uid[u] for u in result.units_by_uid]
     pairs = [(u, s, h) for u, s, h in zip(uids, shares, hotkeys) if s > 0]
     if not pairs:
         raise ValueError("empty v3 vector")

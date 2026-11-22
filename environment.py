@@ -128,6 +128,10 @@ REMOVED_SETTINGS = (
     "organic_dual_rank_enabled",
     "organic_routing_preempt_enabled",
     "reliability_rank_enabled",
+    # Recall never burns: the burn switches are gone (unearned units always go to miners;
+    # with no usable bundle the weight loop splits equally across miners).
+    "incentive_v3_burn_unearned",
+    "weight_failclosed_policy",
 )
 
 
@@ -195,12 +199,9 @@ class EnvironmentVariables(BaseSettings):
     # Age above tempo + grace raises an alert; the last verified vector is still set.
     weight_bundle_grace_blocks: int = 60
     # Above this age (blocks) a stale verified vector is no
-    # longer re-set; the loop falls back to the owner/immune UID and alerts. 0 = never
+    # longer re-set; the loop falls back to the equal split and alerts. 0 = never
     # (legacy behaviour: the last valid vector is re-set indefinitely).
     weight_max_stale_blocks: int = 0
-    # Legacy compatibility setting. The enabled weight loop reuses valid stale
-    # vectors and uses owner fallback when none is valid, regardless of this value.
-    weight_failclosed_policy: str = "keep"
 
     # Optional wallet directory for a deploy-host local mount (empty = legacy default).
     wallet_path: str = ""
@@ -210,10 +211,8 @@ class EnvironmentVariables(BaseSettings):
     incentive_v3_slot_window_hours: int = 48
     # Allocator state scope: empty (default) or "grounded-v1".
     incentive_v3_eligibility_scope: str = ""
-    # Master allocation only: readiness share of each tier budget (rest is service), and
-    # whether unearned units burn to the owner UID or are paid to miners pro rata.
+    # Master allocation only: readiness share of each tier budget (rest is service).
     incentive_v3_readiness_split: float = 0.40
-    incentive_v3_burn_unearned: bool = True
     # Master allocation only: how each tier's readiness pool is paid. "shares" (default)
     # pays every eligible miner by quality, at most one slot's worth each; "slots" pays
     # the four slot holders. Both are valid on every network, mainnet included.
@@ -237,6 +236,8 @@ class EnvironmentVariables(BaseSettings):
     organic_sustained_min_count: str | None = None
     organic_sustained_min_principals: str | None = None
     organic_sustained_min_databases: str | None = None
+    incentive_v3_burn_unearned: str | None = None
+    weight_failclosed_policy: str | None = None
     organic_events_enabled: str | None = None
     dual_rank_enabled: str | None = None
     organic_router_preempt_enabled: str | None = None

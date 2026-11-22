@@ -1,4 +1,4 @@
-"""Configurable readiness split and the no-burn (redistribute) mode of allocate_v3."""
+"""Configurable readiness split, redistribution and the equal split of allocate_v3 (never burns)."""
 
 from __future__ import annotations
 
@@ -49,35 +49,44 @@ def test_split_out_of_range_is_refused(bad):
         readiness_pools(bad)
 
 
-def test_burn_mode_is_unchanged_by_default():
+def test_earned_only_analysis_view_reports_the_unassigned_rest():
     miners = [_miner(1, 0.99), _miner(2, 0.99, factor=0.6)]
-    res = allocate_v3(miners, {}, _state(miners), 200)
-    assert res.burn_units > 0 and not res.redistributed_by_reason
-    assert math.isclose(sum(res.units_by_uid.values()) + res.burn_units, TOTAL_UNITS, abs_tol=TOL)
+    res = allocate_v3(miners, {}, _state(miners), 200, redistribute=False)
+    assert res.unassigned_units > 0 and not res.redistributed_by_reason
+    assert math.isclose(sum(res.units_by_uid.values()) + res.unassigned_units, TOTAL_UNITS, abs_tol=TOL)
 
 
-def test_no_burn_pays_everything_to_miners_keeping_ratios():
+def test_redistribution_pays_everything_to_miners_keeping_ratios():
     miners = [_miner(1, 0.99), _miner(2, 0.99, factor=0.6)]
-    burned = allocate_v3(miners, {}, _state(miners), 200)
-    paid = allocate_v3(miners, {}, _state(miners), 200, burn_unearned=False)
-    assert paid.burn_units == 0.0 and paid.burn_by_reason == {}
+    earned = allocate_v3(miners, {}, _state(miners), 200, redistribute=False)
+    paid = allocate_v3(miners, {}, _state(miners), 200)
+    assert paid.unassigned_units == 0.0 and paid.unearned_by_reason == earned.unearned_by_reason
     assert math.isclose(sum(paid.units_by_uid.values()), TOTAL_UNITS, abs_tol=TOL)
-    assert math.isclose(sum(paid.redistributed_by_reason.values()), burned.burn_units, abs_tol=TOL)
-    r_burned = burned.units_by_uid[1] / burned.units_by_uid[2]
+    assert math.isclose(sum(paid.redistributed_by_reason.values()), earned.unassigned_units, abs_tol=TOL)
+    r_earned = earned.units_by_uid[1] / earned.units_by_uid[2]
     r_paid = paid.units_by_uid[1] / paid.units_by_uid[2]
-    assert math.isclose(r_burned, r_paid, rel_tol=1e-9)
-    assert paid.state == burned.state  # stages, slots and ramps are mode-independent
+    assert math.isclose(r_earned, r_paid, rel_tol=1e-9)
+    assert paid.state == earned.state  # stages, slots and ramps are mode-independent
 
 
-def test_no_burn_with_no_earner_still_burns():
+def test_no_earner_splits_equally_across_all_miners():
     miners = [_miner(1, 0.0)]
-    res = allocate_v3(miners, {}, None, 200, burn_unearned=False)
-    assert not res.units_by_uid
-    assert math.isclose(res.burn_units, TOTAL_UNITS, abs_tol=TOL)
+    everyone = {1: "5m1", 2: "5m2", 3: "5m3", 4: "5m4"}
+    res = allocate_v3(miners, {}, None, 200, fallback_miners=everyone)
+    assert res.unassigned_units == 0.0 and not res.redistributed_by_reason
+    assert set(res.units_by_uid) == set(everyone)
+    assert all(math.isclose(v, TOTAL_UNITS / 4, abs_tol=TOL) for v in res.units_by_uid.values())
+    assert {u: res.hotkey_by_uid[u] for u in everyone} == everyone
+    assert math.isclose(res.equal_split_units, TOTAL_UNITS, abs_tol=TOL)
+
+
+def test_no_earner_without_a_miner_list_refuses_instead_of_burning():
+    with pytest.raises(ArithmeticError, match="refusing to burn"):
+        allocate_v3([_miner(1, 0.0)], {}, None, 200)
 
 
 def test_split_changes_readiness_pay():
     miners = [_miner(1, 0.99), _miner(2, 0.99)]
-    base = allocate_v3(miners, {}, _state(miners), 200)
-    more = allocate_v3(miners, {}, _state(miners), 200, readiness_split=0.80)
+    base = allocate_v3(miners, {}, _state(miners), 200, redistribute=False)
+    more = allocate_v3(miners, {}, _state(miners), 200, readiness_split=0.80, redistribute=False)
     assert math.isclose(sum(more.units_by_uid.values()), 2 * sum(base.units_by_uid.values()), rel_tol=1e-9)

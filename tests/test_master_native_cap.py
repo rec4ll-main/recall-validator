@@ -61,12 +61,12 @@ def test_share_exactly_at_cap_is_allowed_and_one_more_is_refused():
 
 def test_u16_max_limit_disables_the_check():
     assert native_cap_violations([65535], 65535) == []
-    assert validate_weight_rows([0], [65535], native_cap=1.0, burn_uid=0) is None
+    assert validate_weight_rows([3], [65535], native_cap=1.0) is None
 
 
-def test_single_burn_row_is_refused_under_any_cap_below_one():
-    reason = validate_weight_rows([0], [65535], native_cap=NINETY, burn_uid=0)
-    assert reason == "burn row uid 0 share 1.000000 exceeds native max-weight cap 0.900008"
+def test_single_row_is_refused_under_any_cap_below_one():
+    reason = validate_weight_rows([3], [65535], native_cap=NINETY)
+    assert reason == "row uid 3 share 1.000000 exceeds native max-weight cap 0.900008"
 
 
 def test_matches_chain_fixed_point_where_float_comparison_differs():
@@ -83,18 +83,21 @@ def test_matches_chain_fixed_point_where_float_comparison_differs():
     assert native_cap_violations(rows, limit) == []
 
 
-def test_every_row_is_checked_not_only_the_burn_row():
+def test_every_row_is_checked():
     uids = [1, 2, 3]
     _, w = convert_weights_and_uids(uids, [0.6, 0.2, 0.2])
-    reason = validate_weight_rows(uids, w, native_cap=HALF, burn_uid=None)
+    reason = validate_weight_rows(uids, w, native_cap=HALF)
     assert reason.startswith("row uid 1 share 0.6")
 
 
-def test_burn_row_still_exempt_from_miner_cap_within_native_cap():
+def test_no_row_is_exempt_from_the_miner_cap():
+    # The old owner/burn row exemption is gone: a 0.8 row is refused under the miner cap.
     uids = [0] + list(MINER_UIDS)
     _, w = convert_weights_and_uids(uids, [0.8] + [0.05] * 4)
-    assert validate_weight_rows(uids, w, native_cap=NINETY, burn_uid=0) is None
-    assert validate_weight_rows(uids, w, native_cap=NINETY, burn_uid=None) == "decoded share exceeds cap"
+    assert validate_weight_rows(uids, w, native_cap=NINETY) == "decoded share exceeds cap"
+
+
+OVER_CAP = [0.7, 0.1, 0.1, 0.1]  # miner uid 3 above a 0.5 native cap
 
 
 # --------------------------------------------------------------------------- #
@@ -118,7 +121,7 @@ class World:
         monkeypatch.setattr(bundle_consume, "fetch_block", lambda api, cid, **k: self.blocks[cid])
         monkeypatch.setattr(bundle_consume, "fetch_gateway", lambda api, cid, **k: self.blocks[cid])
         owner = (0, HOTKEYS[0])
-        monkeypatch.setattr("owner_burn.resolve_owner_burn_uid", lambda *a, **k: owner)
+        monkeypatch.setattr("owner_uid.resolve_owner_uid", lambda *a, **k: owner)
 
     def _publish(self, url, data, **k):
         self.ipfs_calls.append("add")
@@ -145,16 +148,33 @@ def _stored(state, e):
     return ArtifactStore(str(state)).load(NETUID, e // 360, e)
 
 
-def test_master_refuses_freshly_built_burn_bundle_over_cap(tmp_path, monkeypatch):
-    w = World(tmp_path, monkeypatch, native_cap=HALF)
+def _over_cap_weights():
+    return convert_weights_and_uids(list(MINER_UIDS), OVER_CAP)[1]
+
+
+def test_master_refuses_a_bundle_that_weights_the_owner(tmp_path, monkeypatch):
+    w = World(tmp_path, monkeypatch, native_cap=NINETY)
     w.chain.advance_to(E1 + 1)
-    env = build_envelope_for(w.chain, w.sub, E1, with_burn=True)
+    env = build_envelope_for(w.chain, w.sub, E1, with_owner_row=True)
     monkeypatch.setattr(bundle_publish, "build_envelope", lambda *a, **k: env)
 
     out = w.master()
 
     assert out.status == "blocked", out
-    assert out.reason.startswith("bundle refused: burn row uid 0 share 0.79"), out.reason
+    assert out.reason == "bundle refused: payload weights the subnet owner (uid 0)", out.reason
+    assert _stored(w.mstate, E1) is None and w.ipfs_calls == [] and w.sub.set_commitment_calls == 0
+
+
+def test_master_refuses_freshly_built_bundle_over_cap(tmp_path, monkeypatch):
+    w = World(tmp_path, monkeypatch, native_cap=HALF)
+    w.chain.advance_to(E1 + 1)
+    env = build_envelope_for(w.chain, w.sub, E1, weights=_over_cap_weights())
+    monkeypatch.setattr(bundle_publish, "build_envelope", lambda *a, **k: env)
+
+    out = w.master()
+
+    assert out.status == "blocked", out
+    assert out.reason.startswith("bundle refused: row uid 3 share 0.7"), out.reason
     assert "exceeds native max-weight cap 0.500008" in out.reason
     assert _stored(w.mstate, E1) is None          # never persisted
     assert w.ipfs_calls == []                     # never added or pinned
@@ -166,21 +186,23 @@ def test_master_refuses_previously_stored_bundle_over_cap(tmp_path, monkeypatch)
     # An envelope persisted by an older build is re-validated before publishing.
     w = World(tmp_path, monkeypatch, native_cap=HALF)
     w.chain.advance_to(E1 + 1)
-    env = build_envelope_for(w.chain, w.sub, E1, with_burn=True)
+    env = build_envelope_for(w.chain, w.sub, E1, weights=_over_cap_weights())
     w.mstate.mkdir(parents=True)
     ArtifactStore(str(w.mstate)).store(NETUID, E1 // 360, E1, env)
 
     out = w.master()
 
-    assert out.status == "blocked" and out.reason.startswith("bundle refused: burn row uid 0"), out
+    assert out.status == "blocked" and out.reason.startswith("bundle refused: row uid 3"), out
     assert w.ipfs_calls == [] and w.sub.set_commitment_calls == 0
     assert w.journal_rows(w.mstate) == []
 
 
-def test_master_and_consume_give_the_same_reason(tmp_path, monkeypatch):
+@pytest.mark.parametrize("kind", ["over_cap", "owner_row"])
+def test_master_and_consume_give_the_same_reason(tmp_path, monkeypatch, kind):
     w = World(tmp_path, monkeypatch, native_cap=HALF)
     w.chain.advance_to(E1 + 1)
-    env = build_envelope_for(w.chain, w.sub, E1, with_burn=True)
+    env = (build_envelope_for(w.chain, w.sub, E1, weights=_over_cap_weights()) if kind == "over_cap"
+           else build_envelope_for(w.chain, w.sub, E1, with_owner_row=True))
     monkeypatch.setattr(bundle_publish, "build_envelope", lambda *a, **k: env)
     master_out = w.master()
 
@@ -199,7 +221,7 @@ def test_master_and_consume_give_the_same_reason(tmp_path, monkeypatch):
 def test_bundle_within_cap_is_published_and_applied(tmp_path, monkeypatch):
     w = World(tmp_path, monkeypatch, native_cap=NINETY)
     w.chain.advance_to(E1 + 1)
-    env = build_envelope_for(w.chain, w.sub, E1, with_burn=True)
+    env = build_envelope_for(w.chain, w.sub, E1)
     monkeypatch.setattr(bundle_publish, "build_envelope", lambda *a, **k: env)
 
     out = w.master()
@@ -215,12 +237,12 @@ def test_bundle_within_cap_is_published_and_applied(tmp_path, monkeypatch):
 @pytest.mark.parametrize("cap,rejected", [(HALF, True), (NINETY, False)])
 def test_fixture_chain_rule_agrees_with_the_check(cap, rejected):
     # The fixture chain implements check_vec_max_limited independently; the shared
-    # check refuses exactly what it rejects with MaxWeightExceeded.
+    # native-cap check refuses exactly what it rejects with MaxWeightExceeded.
     chain = FakeChain(native_cap=cap)
-    uids = [0] + list(MINER_UIDS)
-    _, values = convert_weights_and_uids(uids, [0.8] + [0.05] * 4)
+    uids = list(MINER_UIDS)
+    _, values = convert_weights_and_uids(uids, [0.8, 0.1, 0.05, 0.05])
     ext = FakeExtrinsic(kind="weights", signer=HOTKEYS[2], nonce=0, birth=0, period=128,
                         payload=(tuple(uids), tuple(values)))
     err = chain._execute(ext, 100)
     assert (err is not None and err["name"] == "MaxWeightExceeded") is rejected
-    assert (validate_weight_rows(uids, values, native_cap=cap, burn_uid=0) is not None) is rejected
+    assert bool(native_cap_violations(values, native_cap_limit(cap))) is rejected

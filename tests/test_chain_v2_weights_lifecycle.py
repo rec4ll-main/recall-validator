@@ -23,6 +23,7 @@ from bundle_store import artifact_digest
 from chain_v2_fake import (
     GENESIS,
     HOTKEYS,
+    MINER_UIDS,
     NETUID,
     SLAVE,
     FakeChain,
@@ -241,35 +242,33 @@ def test_sdk_pre_send_rpc_error_is_not_dispatched_and_recovers(tmp_path, monkeyp
 
 
 # --------------------------------------------------------------------------- #
-# Native max-weight cap on every row, the burn row included.
+# Native max-weight cap on every row; no row may weight the subnet owner.
 # --------------------------------------------------------------------------- #
 
 
-def test_burn_row_over_native_cap_is_blocked_before_any_journal_row(tmp_path, monkeypatch):
+def test_row_over_native_cap_is_blocked_before_any_journal_row(tmp_path, monkeypatch):
+    from allocation_encoding import convert_weights_and_uids
     w = World(tmp_path, monkeypatch, native_cap=0.5)
-    w.epoch(E1, with_burn=True)
+    w.epoch(E1, weights=convert_weights_and_uids(list(MINER_UIDS), [0.7, 0.1, 0.1, 0.1])[1])
     w.chain.advance_to(E1 + 20)
-    monkeypatch.setattr(
-        bundle_consume, "_signed_burn_uid",
-        lambda *a, **k: (0, HOTKEYS[0]),
-    )
 
     out = w.tick()
 
     assert out.status == "blocked", out
-    assert out.reason.startswith("burn row uid 0 share 0.79")
+    assert out.reason.startswith("row uid 3 share 0.7")
     assert "exceeds native max-weight cap 0.500000" in out.reason
     assert w.rows() == {}
     assert w.sub.set_weights_calls == 0
 
 
-def test_burn_row_within_native_cap_is_applied(tmp_path, monkeypatch):
+def test_owner_row_is_never_applied_even_within_native_cap(tmp_path, monkeypatch):
     w = World(tmp_path, monkeypatch, native_cap=0.9)
-    w.epoch(E1, with_burn=True)
+    w.epoch(E1, with_owner_row=True)
     w.chain.advance_to(E1 + 20)
-    monkeypatch.setattr(bundle_consume, "_signed_burn_uid", lambda *a, **k: (0, HOTKEYS[0]))
 
-    assert w.tick().status == "applied"
+    out = w.tick()
+    assert out.status == "blocked" and out.reason == "payload weights the subnet owner (uid 0)", out
+    assert w.rows() == {} and w.sub.set_weights_calls == 0
 
 
 # --------------------------------------------------------------------------- #

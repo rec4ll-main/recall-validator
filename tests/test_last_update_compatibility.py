@@ -140,7 +140,7 @@ def test_zero_sentinel_still_checks_verified_vector(bad_vector):
     assert submit.calls == []
 
 
-def test_zero_sentinel_cannot_dispatch_without_verified_or_burn_vector():
+def test_zero_sentinel_cannot_dispatch_without_verified_or_fallback_vector():
     loop, submit = make_loop(LiveReader())
     loop.weights_source = lambda: None
     assert loop.tick()[0].status == "failclosed"
@@ -286,7 +286,7 @@ class FinalizedStorage:
                 "ValidatorPermit": [True, True, True], "MechanismCountCurrent": 1,
                 "WeightsSetRateLimit": 1000, "Tempo": 360,
                 "CommitRevealWeightsEnabled": False, "WeightsVersionKey": 11,
-                "LastMechansimStepBlock": 0,
+                "LastMechansimStepBlock": 0, "SubnetOwnerHotkey": "subnet-owner",
             }
             if name in self.overrides:
                 return self.overrides[name]
@@ -299,6 +299,7 @@ class FinalizedStorage:
                 "WeightsSetRateLimit": 1, "Tempo": 99,
                 "CommitRevealWeightsEnabled": True, "WeightsVersionKey": 99,
                 "LastMechansimStepBlock": 12, "LastUpdate": [12, 12, 12],
+                "SubnetOwnerHotkey": "unfinalized-owner",
             }
         if name == "Uids":
             return keys.index(params[1]) if params[1] in keys else None

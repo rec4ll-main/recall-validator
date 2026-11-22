@@ -26,7 +26,7 @@ def normalize_uid_weight_pairs(
     """Normalize parallel UID/weight (optional hotkey) vectors for envelope publish.
 
     Returns UIDs in ascending unique order. Duplicate UIDs have weights summed
-    (first hotkey wins). Used on burn and non-burn encode paths so signed
+    (first hotkey wins). Used on every encode path so signed
     ``uids`` satisfy bundle_v2 validate_payload (ascending + unique).
     """
     if len(uids) != len(weights):

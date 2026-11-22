@@ -4,7 +4,7 @@ Layout under BUNDLE_STATE_DIR/v3/weights/ (the only state namespace; the name is
 kept from the release that also had a separate shadow mode, so state is reused):
   state.json                        allocator state (stages, carry, slots, ramps, last_epoch)
   epochs/<epoch_start_block>.json   per-epoch record: t_call, input digest + numeric inputs,
-                                    units, burn by reason, encoded vector, mode (weights)
+                                    units, unearned by reason, encoded vector, mode (weights)
 Records are written once per epoch (exclusive create); a second write for the same epoch
 is refused so a restart reuses the stored result instead of advancing state twice.
 

@@ -7,8 +7,10 @@ Usage (read-only; no network, no chain, no writes):
 The runtime advances the allocator from the state saved after the previous epoch, which
 is the previous epoch record's ``state_after``. Without ``--prev-record`` the newest
 record with a lower ``epoch_start_block`` in the same directory is used; with none, the
-epoch is recomputed from an empty state (first epoch). Readiness split and burn mode are
-taken from the record. Records do not store coldkeys: the miners kept after coldkey
+epoch is recomputed from an empty state (first epoch). The readiness split is taken from
+the record. Allocation follows the current never-burn rules: unearned units are
+redistributed, and anything left (everything, when nobody earned) is split equally across
+the miners listed in the record (the full subnet list is not stored). Records do not store coldkeys: the miners kept after coldkey
 dedup are the ones listed in the record's ``state_after.identities``, so the cohort is
 restricted to those and needs no further dedup. Records written before
 INCENTIVE_V3_READINESS_MODE existed carry no ``readiness_mode`` and were slots.
@@ -63,7 +65,7 @@ def recompute(record: dict, prev_state: dict | None) -> dict:
     demand = record["inputs"].get("demand", {})
     epoch = int(record["epoch_start_block"])
     kw = dict(readiness_split=float(record.get("readiness_split", READINESS_SPLIT)),
-              burn_unearned=bool(record.get("burn_unearned", True)))
+              fallback_miners={m.uid: m.hotkey for m in miners})
     return {mode: allocate_v3(miners, demand, prev_state, epoch, readiness_mode=mode, **kw)
             for mode in READINESS_MODES}
 
@@ -82,11 +84,13 @@ def summarize(record: dict, results: dict) -> dict:
     return {
         "epoch_start_block": int(record["epoch_start_block"]),
         "recorded_mode": recorded_mode,
-        "recorded_burn_units": float(record.get("burn_units", 0.0)),
+        # Older records (before never-burn) may carry burn_units; newer ones always pay 100.
+        "recorded_unpaid_units": float(record.get("burn_units", 0.0)),
         "max_abs_diff_vs_record": drift,
         "rows": rows,
-        "totals": {m: {"paid": math.fsum(r.units_by_uid.values()), "burn": r.burn_units,
-                       "burn_by_reason": dict(sorted(r.burn_by_reason.items())),
+        "totals": {m: {"paid": math.fsum(r.units_by_uid.values()),
+                       "unearned_by_reason": dict(sorted(r.unearned_by_reason.items())),
+                       "equal_split": r.equal_split_units,
                        "paid_miners": len(r.units_by_uid)} for m, r in results.items()},
     }
 
@@ -99,13 +103,12 @@ def render(summary: dict) -> str:
     for r in summary["rows"]:
         lines.append(f"{r['uid']:>5}  {r['recorded']:>9.4f}  " + "  ".join(f"{r[m]:>9.4f}" for m in modes)
                      + f"  {r['hotkey']}")
-    lines.append(f"{'paid':>5}  {TOTAL_UNITS - summary['recorded_burn_units']:>9.4f}  "
+    lines.append(f"{'paid':>5}  {TOTAL_UNITS - summary['recorded_unpaid_units']:>9.4f}  "
                  + "  ".join(f"{summary['totals'][m]['paid']:>9.4f}" for m in modes))
-    lines.append(f"{'burn':>5}  {summary['recorded_burn_units']:>9.4f}  "
-                 + "  ".join(f"{summary['totals'][m]['burn']:>9.4f}" for m in modes))
     for m in modes:
-        reasons = ", ".join(f"{k}={v:.4f}" for k, v in summary["totals"][m]["burn_by_reason"].items() if v > 0)
-        lines.append(f"{m} burn by reason: {reasons or 'none'}")
+        reasons = ", ".join(f"{k}={v:.4f}" for k, v in summary["totals"][m]["unearned_by_reason"].items() if v > 0)
+        lines.append(f"{m} unearned (redistributed) by reason: {reasons or 'none'}; "
+                     f"equal split {summary['totals'][m]['equal_split']:.4f}")
     return "\n".join(lines)
 
 

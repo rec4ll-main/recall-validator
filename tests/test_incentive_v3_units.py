@@ -236,7 +236,7 @@ def _miner(uid, tiers, ck=None, reg=100, serious=False):
 def _run(miners, demand, epochs, state=None, start=1000):
     res = None
     for e in range(epochs):
-        res = allocate_v3(miners, demand, state, start + e * 360)
+        res = allocate_v3(miners, demand, state, start + e * 360, redistribute=False)
         state = res.state
     return res, state
 
@@ -250,17 +250,17 @@ def test_conservation_every_epoch_sum_is_100():
     rng = random.Random(1)
     for e in range(30):
         demand = {k: rng.uniform(0, 3000) for k in SERVICE_POOLS}
-        r = allocate_v3(miners, demand, state, 1000 + 360 * e)
+        r = allocate_v3(miners, demand, state, 1000 + 360 * e, redistribute=False)
         state = r.state
-        assert abs(sum(r.units_by_uid.values()) + r.burn_units - 100.0) < 1e-9
-        assert abs(sum(r.burn_by_reason.values()) - r.burn_units) < 1e-6
+        assert abs(sum(r.units_by_uid.values()) + r.unassigned_units - 100.0) < 1e-9
+        assert abs(sum(r.unearned_by_reason.values()) - r.unassigned_units) < 1e-6
 
 
 def test_storage_pool_always_burns():
     assert STORAGE_REWARDS_ENABLED is False
     miners = [_miner(u, {t: _healthy_tier(t) for t in TIERS}) for u in range(3, 7)]
     r, _ = _run(miners, {k: 1e9 for k in SERVICE_POOLS}, 12)
-    assert r.burn_by_reason["storage_disabled"] == pytest.approx(SERVICE_POOLS["vdb_storage"][1])
+    assert r.unearned_by_reason["storage_disabled"] == pytest.approx(SERVICE_POOLS["vdb_storage"][1])
 
 
 def test_todays_quiet_vdb_only_readiness():
@@ -270,7 +270,7 @@ def test_todays_quiet_vdb_only_readiness():
     r, _ = _run(miners, ZERO, 8)
     paid = sum(r.units_by_uid.values())
     assert paid == pytest.approx(READINESS_POOL["vdb"] * 0.99, abs=1e-9)
-    assert r.burn_units == pytest.approx(100.0 - paid)
+    assert r.unassigned_units == pytest.approx(100.0 - paid)
 
 
 @pytest.mark.parametrize("epochs", [20, 60])
@@ -288,13 +288,13 @@ def test_healthy_capabilities_full_demand_scenario(epochs):
     paid = sum(r.units_by_uid.values())
     assert all(v == pytest.approx(f) for k, v in r.f.items())
     assert paid == pytest.approx(readiness + f * service_max, abs=1e-9)
-    assert r.burn_by_reason["storage_disabled"] == pytest.approx(12.0)
-    assert r.burn_by_reason["storage_disabled"] == pytest.approx(12.0)
+    assert r.unearned_by_reason["storage_disabled"] == pytest.approx(12.0)
+    assert r.unearned_by_reason["storage_disabled"] == pytest.approx(12.0)
 
 
 def test_new_miner_stages_provisional_half_weight():
     miners = [_miner(3, {"vdb": _healthy_tier("vdb")})]
-    r1 = allocate_v3(miners, ZERO, None, 1000)
+    r1 = allocate_v3(miners, ZERO, None, 1000, redistribute=False)
     assert r1.units_by_uid[3] == pytest.approx(12.0 / 4 * 0.99 * 0.5)
     r5, _ = _run(miners, ZERO, 5)
     assert r5.units_by_uid[3] == pytest.approx(12.0 / 4 * 0.99)
@@ -304,7 +304,7 @@ def test_serious_failure_zeroes_and_resets_stage():
     good = {t: _healthy_tier(t) for t in ("vdb",)}
     m = _miner(3, good)
     _, st = _run([m], ZERO, 6)
-    r = allocate_v3([_miner(3, good, serious=True)], ZERO, st, 1000 + 360 * 6)
+    r = allocate_v3([_miner(3, good, serious=True)], ZERO, st, 1000 + 360 * 6, redistribute=False)
     assert 3 not in r.units_by_uid
     assert r.state["stages"]["vdb"]["hk3"]["stage"] == "observation"
 
@@ -312,15 +312,15 @@ def test_serious_failure_zeroes_and_resets_stage():
 def test_coldkey_dedup_highest_registration():
     a = _miner(3, {"vdb": _healthy_tier("vdb")}, ck="same", reg=10)
     b = _miner(4, {"vdb": _healthy_tier("vdb")}, ck="same", reg=20)
-    r = allocate_v3([a, b], ZERO, None, 1000)
+    r = allocate_v3([a, b], ZERO, None, 1000, redistribute=False)
     assert set(r.units_by_uid) == {4}
 
 
 def test_same_epoch_twice_refused():
     m = [_miner(3, {"vdb": _healthy_tier("vdb")})]
-    r = allocate_v3(m, ZERO, None, 1000)
+    r = allocate_v3(m, ZERO, None, 1000, redistribute=False)
     with pytest.raises(ValueError):
-        allocate_v3(m, ZERO, r.state, 1000)
+        allocate_v3(m, ZERO, r.state, 1000, redistribute=False)
 
 
 def test_per_miner_cap_overflow_burns():
@@ -331,7 +331,7 @@ def test_per_miner_cap_overflow_burns():
           for u in range(3, 28)]
     r, _ = _run(ms, dict(DEMAND_W), 60)
     assert 10.0 - 0.01 < r.units_by_uid[3] < 10.0  # cap less the u16 rounding margin
-    assert r.burn_by_reason["per_miner_cap"] > 0
+    assert r.unearned_by_reason["per_miner_cap"] > 0
 
 
 def test_service_paid_only_to_tier_eligible():
@@ -342,20 +342,22 @@ def test_service_paid_only_to_tier_eligible():
     assert 4 not in r.units_by_uid and r.units_by_uid[3] > 0
 
 
-def test_encode_has_burn_row_and_ascending_uids():
+def test_encode_has_only_miner_rows_in_ascending_uids():
     m = [_miner(u, {"vdb": _healthy_tier("vdb")}) for u in (5, 3, 6)]
-    r, _ = _run(m, ZERO, 6)
-    uids, hks, vals = encode_v3(r, 0, "owner")
-    assert uids == sorted(uids) and uids[0] == 0 and hks[0] == "owner"
-    shares = [v / sum(vals) for v in vals]
-    assert shares[0] == pytest.approx(r.burn_units / 100.0, abs=2e-4)
+    state = None
+    for i in range(6):
+        r = allocate_v3(m, ZERO, state, 1000 * (i + 1), fallback_miners={x.uid: x.hotkey for x in m})
+        state = r.state
+    uids, hks, vals = encode_v3(r)
+    assert uids == sorted(uids) and set(uids) <= {3, 5, 6} and 0 not in uids
+    assert sum(v / sum(vals) for v in vals) == pytest.approx(1.0)
 
 
-def test_encode_refuses_burn_uid_collision():
+def test_encode_refuses_an_earned_only_result():
     m = [_miner(3, {"vdb": _healthy_tier("vdb")})]
-    r = allocate_v3(m, ZERO, None, 1000)
-    with pytest.raises(ValueError):
-        encode_v3(r, 3, "x")
+    r = allocate_v3(m, ZERO, None, 1000, redistribute=False)
+    with pytest.raises(ValueError, match="unassigned"):
+        encode_v3(r)
 
 def test_blocked_check_never_carries_or_advances():
     """Explicit coverage block: ineligible, streak reset, never preserves eligibility."""
@@ -394,13 +396,13 @@ def test_blocked_tier_no_stage_progression_no_slot():
     demand = {k: 0.0 for k in ("vdb_storage", "vdb_query", "emb", "rerank", "gen")}
     # Epoch 1: emb blocked → emb stays observation, no emb holder.
     m = [MinerEvidence(1, "hk", "ck", 100, tiers(True))]
-    r = allocate_v3(m, demand, None, 1000)
+    r = allocate_v3(m, demand, None, 1000, redistribute=False)
     assert r.state["stages"]["emb"]["hk"]["stage"] == "observation"
     assert "hk" not in r.holders.get("emb", [])  # holders is on the result
     assert "hk" not in r.eligible.get("emb", [])
     # Epoch 2 with emb unblocked: provisional starts (first eligibility).
     m2 = [MinerEvidence(1, "hk", "ck", 100, tiers(False))]
-    r2 = allocate_v3(m2, demand, r.state, 2000)
+    r2 = allocate_v3(m2, demand, r.state, 2000, redistribute=False)
     assert r2.state["stages"]["emb"]["hk"]["stage"] == "provisional"
     assert "hk" in r2.holders["emb"]
 

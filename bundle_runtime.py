@@ -52,7 +52,6 @@ class BundleConfig:
     # Incentive v3 (score_version 11), the only scoring path. Master allocation settings.
     v3_eligibility_scope: str = ""
     v3_readiness_split: float = 0.40
-    v3_burn_unearned: bool = True
     v3_readiness_mode: str = "shares"
 
 

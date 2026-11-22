@@ -126,7 +126,7 @@ def _m(uid, hk, reg=100, tiers=None, serious=False, ck=None):
 def _run_epochs(seq, state=None, start=E1, step=360):
     res = None
     for i, miners in enumerate(seq):
-        res = allocate_v3(miners, {k: 0.0 for k in SERVICE_POOLS}, state, start + i * step)
+        res = allocate_v3(miners, {k: 0.0 for k in SERVICE_POOLS}, state, start + i * step, redistribute=False)
         state = res.state
     return res, state
 
@@ -154,7 +154,7 @@ def test_replaced_uid_new_hotkey_inherits_nothing():
 
 def test_duplicate_uid_in_cohort_refused():
     with pytest.raises(ValueError, match="duplicate uid"):
-        allocate_v3([_m(3, "a", ck="x"), _m(3, "b", ck="y")], {k: 0.0 for k in SERVICE_POOLS}, None, E1)
+        allocate_v3([_m(3, "a", ck="x"), _m(3, "b", ck="y")], {k: 0.0 for k in SERVICE_POOLS}, None, E1, redistribute=False)
 
 
 def test_evidence_for_moved_uid_is_rejected():
@@ -222,7 +222,7 @@ def test_restart_mid_run_matches_uninterrupted_run(tmp_path, monkeypatch, point,
     _runtime_epochs(w, c, epochs, crash_at=(epochs[crash_epoch_idx], point), monkeypatch=monkeypatch)
     for e in epochs:
         a, b = load_epoch_record(cref.state_dir, "weights", e), load_epoch_record(c.state_dir, "weights", e)
-        for k in ("units_by_uid", "burn_units", "weights_u16", "uids", "state_after", "inputs_digest"):
+        for k in ("units_by_uid", "unearned_by_reason", "weights_u16", "uids", "state_after", "inputs_digest"):
             assert a[k] == b[k], (e, k)
     assert load_state(cref.state_dir, "weights") == load_state(c.state_dir, "weights")
 
@@ -261,21 +261,21 @@ def test_weights_mode_restart_rebuilds_identical_vector_and_no_double_submit(tmp
 
 # ------------------------------------------------------------------ 1e no positive default credit
 
-def test_missing_service_credit_burns_whole_pool():
+def test_missing_service_credit_leaves_whole_pool_unearned():
     miners = [_m(u, f"h{u}", tiers={t: _tier_ok(t) for t in TIERS}) for u in range(3, 7)]
     st = None
     for i in range(10):
-        r = allocate_v3(miners, dict(DEMAND_W), st, E1 + i * 360); st = r.state
+        r = allocate_v3(miners, dict(DEMAND_W), st, E1 + i * 360, redistribute=False); st = r.state
     for name in SERVICE_POOLS:
         if name != "vdb_storage":
-            assert r.burn_by_reason[f"service_unpaid:{name}"] == pytest.approx(SERVICE_POOLS[name][1])
+            assert r.unearned_by_reason[f"service_unpaid:{name}"] == pytest.approx(SERVICE_POOLS[name][1])
 
 
 def test_nan_factor_and_garbage_never_pay():
     t = MinerTierEvidence(tuple(CheckStats(c, 200.0, 0.99) for c in CHECKS_BY_TIER["vdb"]), float("nan"), 400, 432, None)
     st = None
     for i in range(8):
-        r = allocate_v3([_m(3, "a", tiers={"vdb": t})], {k: 0.0 for k in SERVICE_POOLS}, st, E1 + i * 360); st = r.state
+        r = allocate_v3([_m(3, "a", tiers={"vdb": t})], {k: 0.0 for k in SERVICE_POOLS}, st, E1 + i * 360, redistribute=False); st = r.state
     assert r.units_by_uid.get(3, 0.0) == 0.0
 
 
@@ -308,10 +308,10 @@ def test_allocation_property_fuzz():
         demand = {k: rng.choice([0.0, DEMAND_W[k], 10 * DEMAND_W[k]]) for k in SERVICE_POOLS}
         st = None
         for e in range(rng.randint(1, 6)):
-            r = allocate_v3(miners, demand, st, E1 + e * 360); st = r.state
+            r = allocate_v3(miners, demand, st, E1 + e * 360, redistribute=False); st = r.state
             vals = list(r.units_by_uid.values())
             assert all(math.isfinite(v) and v > 0 for v in vals)
-            assert sum(vals) + r.burn_units == pytest.approx(100.0, abs=1e-9)
+            assert sum(vals) + r.unassigned_units == pytest.approx(100.0, abs=1e-9)
             ev_uids = {m.uid for m in miners if m.tiers and not m.serious_failure}
             assert set(r.units_by_uid) <= ev_uids  # no evidence / serious -> nothing
 
@@ -339,11 +339,11 @@ def test_real_web_handler_output_parses_and_allocates():
     miners = to_miner_evidence(ev, snap)
     st, r = None, None
     for i in range(8):  # observation -> provisional -> full under constant evidence
-        r = allocate_v3(miners, ev.demand, st, 8174160 + i * 360); st = r.state
+        r = allocate_v3(miners, ev.demand, st, 8174160 + i * 360, redistribute=False); st = r.state
     assert set(r.units_by_uid) == {11}                 # only hk-a qualifies
     assert set(r.eligible["vdb"]) == {"hk-a"}          # hk-b integrity ~0.75 < 85/89
     assert set(r.eligible["emb"]) == {"hk-a"} and set(r.eligible["rerank"]) == {"hk-a"}
     assert r.eligible["gen"] == []                     # generation BLOCKED (no corpus/backend)
-    assert r.burn_by_reason["service_unpaid:emb"] == pytest.approx(SERVICE_POOLS["emb"][1])  # no demand sourced
-    assert sum(r.units_by_uid.values()) + r.burn_units == pytest.approx(100.0, abs=1e-9)
-    assert r.f["vdb_query"] > 0 and r.burn_by_reason["storage_disabled"] == pytest.approx(SERVICE_POOLS["vdb_storage"][1])
+    assert r.unearned_by_reason["service_unpaid:emb"] == pytest.approx(SERVICE_POOLS["emb"][1])  # no demand sourced
+    assert sum(r.units_by_uid.values()) + r.unassigned_units == pytest.approx(100.0, abs=1e-9)
+    assert r.f["vdb_query"] > 0 and r.unearned_by_reason["storage_disabled"] == pytest.approx(SERVICE_POOLS["vdb_storage"][1])

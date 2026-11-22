@@ -7,7 +7,6 @@ from main import (
     api_endpoint_url,
     epistula_headers,
     publish_metagraph_sync,
-    resolve_burn_uid,
 )
 
 
@@ -219,46 +218,6 @@ def test_validate_deployment_secrets_rejects_non_chain_v2_even_in_test():
     raise AssertionError("non chain-v2 mode must be rejected")
 
 
-def test_resolve_burn_uid_owner_hotkey_match():
-    subtensor = FakeSubtensor()
-    subtensor._subnet_info = FakeSubnetInfo(owner_hotkey="owner-hotkey")
-    metagraph = FakeMetagraph(["validator", "miner-a", "owner-hotkey"])
-    assert resolve_burn_uid(subtensor, metagraph, 7) == 2
-
-
-def test_resolve_burn_uid_owner_coldkey_via_metagraph_coldkeys():
-    subtensor = FakeSubtensor()
-    subtensor._subnet_info = FakeSubnetInfo(owner_ss58="owner-coldkey")
-    metagraph = FakeMetagraph(
-        ["validator", "miner-a", "owner-hotkey"],
-        coldkeys=["validator-coldkey", "miner-a-coldkey", "owner-coldkey"],
-    )
-    assert resolve_burn_uid(subtensor, metagraph, 7) == 2
-
-
-def test_resolve_burn_uid_owner_ss58_matches_hotkey_legacy():
-    subtensor = FakeSubtensor()
-    subtensor._subnet_info = FakeSubnetInfo(owner_ss58="miner-a")
-    metagraph = FakeMetagraph(["validator", "miner-a"], coldkeys=["validator-coldkey", "miner-a-coldkey"])
-    assert resolve_burn_uid(subtensor, metagraph, 7) == 1
-
-
-def test_resolve_burn_uid_no_match_returns_none():
-    subtensor = FakeSubtensor()
-    subtensor._subnet_info = FakeSubnetInfo(owner_ss58="someone-else")
-    metagraph = FakeMetagraph(
-        ["validator", "miner-a"],
-        coldkeys=["validator-coldkey", "miner-a-coldkey"],
-    )
-    assert resolve_burn_uid(subtensor, metagraph, 7) is None
-
-
-def test_resolve_burn_uid_get_subnet_info_error_returns_none():
-    subtensor = FakeSubtensor()
-    metagraph = FakeMetagraph(["validator", "miner-a"])
-    assert resolve_burn_uid(subtensor, metagraph, 7) is None
-
-
 def test_publish_metagraph_sync_refuses_unqualified_empty():
     calls = []
 
@@ -318,16 +277,6 @@ def test_publish_metagraph_sync_non_empty_includes_metadata():
     assert payload["authoritative_empty"] is False
     assert payload["netuid"] == 353
     assert payload["miners"] == [{"uid": 2, "hotkey": "miner-a"}]
-
-
-def test_weights_with_burn_remainder_sorts_ascending():
-    """F1: legacy remainder must not leave burn UID trailing after higher survivors."""
-    from main import weights_with_burn_remainder
-
-    uids, weights = weights_with_burn_remainder([(5, 0.1), (12, 0.1)], burn_uid=0)
-    assert uids == [0, 5, 12]
-    assert abs(sum(weights) - 1.0) < 1e-9
-    assert abs(weights[0] - 0.8) < 1e-9
 
 
 def test_validate_deployment_secrets_armed_requires_explicit_netuid():

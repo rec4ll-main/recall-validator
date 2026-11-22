@@ -70,14 +70,14 @@ def test_scenario_eight_full_holders_k_8_to_4():
     state = _eight_full_vdb_holders_state()
     # identities recorded so the allocator does not treat them as new registrations
     state["identities"] = {m.hotkey: [m.uid, m.registration_block] for m in miners}
-    res = allocate_v3(miners, {}, state, 200, k=4)
+    res = allocate_v3(miners, {}, state, 200, k=4, redistribute=False)
     assert len(res.holders["vdb"]) == 4
     assert sorted(res.holders["vdb"]) == ["5m5", "5m6", "5m7", "5m8"]   # highest pass rates
     assert len([e for e in res.events if e["kind"] == "shrink"]) == 4
     readiness = sum(res.units_by_uid.values())
     if readiness is not None:
         assert readiness <= READINESS_POOL["vdb"] + TOL
-    assert math.isclose(sum(res.units_by_uid.values()) + res.burn_units, TOTAL_UNITS, abs_tol=TOL)
+    assert math.isclose(sum(res.units_by_uid.values()) + res.unassigned_units, TOTAL_UNITS, abs_tol=TOL)
     assert res.state["slots"]["vdb"]["holders"] == res.holders["vdb"]
 
 
@@ -110,4 +110,4 @@ def test_runtime_slot_reduction_between_epochs(tmp_path, monkeypatch):
     assert rec is not None, "the reduced-k epoch must produce a record, not fail"
     assert all(len(h) <= 2 for h in rec["holders"].values())
     assert any(e["kind"] == "shrink" for e in rec["events"])
-    assert abs(sum(rec["units_by_uid"].values()) + rec["burn_units"] - 100.0) < 1e-9
+    assert abs(sum(rec["units_by_uid"].values()) - 100.0) < 1e-9  # never burns: all 100 units to miners
